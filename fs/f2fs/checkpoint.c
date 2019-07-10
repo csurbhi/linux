@@ -1679,11 +1679,20 @@ int __init f2fs_create_checkpoint_caches(void)
 		kmem_cache_destroy(ino_entry_slab);
 		return -ENOMEM;
 	}
+
+	f2fs_offset_entry_slab = f2fs_kmem_cache_create("f2fs_offset_entry",
+			sizeof(struct offset_entry));
+	if (!f2fs_offset_entry_slab) {
+		kmem_cache_destroy(ino_entry_slab);
+		kmem_cache_destroy(f2fs_inode_entry_slab);
+		return -ENOMEM;
+	}
 	return 0;
 }
 
 void f2fs_destroy_checkpoint_caches(void)
 {
 	kmem_cache_destroy(ino_entry_slab);
+	kmem_cache_destroy(f2fs_inode_entry_slab);
 	kmem_cache_destroy(f2fs_inode_entry_slab);
 }
