@@ -441,31 +441,42 @@ static struct inode *find_gc_inode(struct gc_inode_list *gc_list, nid_t ino)
 
 	ie = radix_tree_lookup(&gc_list->iroot, ino);
 	if (ie)
-		return ie->inode;
+		return ie->gc_inode.inode;
 	return NULL;
 }
 
 static void add_gc_inode(struct gc_inode_list *gc_list, struct inode *inode)
 {
 	struct inode_entry *new_ie;
+	struct offset_entry *entry;
 
 	if (inode == find_gc_inode(gc_list, inode->i_ino)) {
+		/* Add the block nr on this inode */
 		iput(inode);
 		return;
 	}
 	new_ie = f2fs_kmem_cache_alloc(f2fs_inode_entry_slab, GFP_NOFS);
-	new_ie->inode = inode;
+	new_ie->gc_inode.inode = inode;
 
 	f2fs_radix_tree_insert(&gc_list->iroot, inode->i_ino, new_ie);
 	list_add_tail(&new_ie->list, &gc_list->ilist);
+
+	/* Add the block nr on this inode */
+	LIST_HEAD_INIT(&new_ie->gc_inode.off_list);
+	entry = f2fs_kmem_cache_alloc(f2fs_offset_entry_slab, GFP_NOFS);
+	entry->offset = offset;
+	list_add_tail(&entry->offset_list, &new_ie->gc_inode.off_list)
 }
 
 static void put_gc_inode(struct gc_inode_list *gc_list)
 {
 	struct inode_entry *ie, *next_ie;
+	struct offset_entry *entry;
 	list_for_each_entry_safe(ie, next_ie, &gc_list->ilist, list) {
-		radix_tree_delete(&gc_list->iroot, ie->inode->i_ino);
-		iput(ie->inode);
+		radix_tree_delete(&gc_list->iroot, ie->gc_inode.inode->i_ino);
+		list_for_each_entry_safe(entry, );
+		list_del(&ie->gc_inode.off_list);
+		iput(ie->gc_inode.inode);
 		list_del(&ie->list);
 		kmem_cache_free(f2fs_inode_entry_slab, ie);
 	}
