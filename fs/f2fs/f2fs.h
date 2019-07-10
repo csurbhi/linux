@@ -238,9 +238,19 @@ struct ino_entry {
 };
 
 /* for the list of inodes to be GCed */
+struct offset_entry{
+        int offset;
+        struct list_head offset_list;
+};
+
+struct f2fs_gc_inode {
+	struct inode *inode;	/* vfs inode pointer */
+        struct offset_list off_list;
+};
+
 struct inode_entry {
 	struct list_head list;	/* list head */
-	struct inode *inode;	/* vfs inode pointer */
+	struct f2fs_gc_inode gc_inode;
 };
 
 struct fsync_node_entry {
