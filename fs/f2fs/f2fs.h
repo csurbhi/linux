@@ -239,13 +239,15 @@ struct ino_entry {
 
 /* for the list of inodes to be GCed */
 struct offset_entry{
-        int offset;
-        struct list_head offset_list;
+        unsigned int ofs_in_node;
+	unsigned int ofs_in_seg;
+	struct f2fs_summary *sum;
+        struct list_head list;
 };
 
 struct f2fs_gc_inode {
 	struct inode *inode;	/* vfs inode pointer */
-        struct offset_list off_list;
+        struct offset_entry off_list;
 };
 
 struct inode_entry {
@@ -3455,6 +3457,7 @@ extern const struct inode_operations f2fs_symlink_inode_operations;
 extern const struct inode_operations f2fs_encrypted_symlink_inode_operations;
 extern const struct inode_operations f2fs_special_inode_operations;
 extern struct kmem_cache *f2fs_inode_entry_slab;
+extern struct kmem_cache *f2fs_offset_entry_slab;
 
 /*
  * inline.c
