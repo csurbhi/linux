@@ -1294,7 +1294,7 @@ int f2fs_gc(struct f2fs_sb_info *sbi, bool sync,
 	unsigned long long last_skipped = sbi->skipped_atomic_files[FG_GC];
 	unsigned long long first_skipped;
 	unsigned int skipped_round = 0, round = 0;
-	unsigned int nr_sec_clean = 7;
+	unsigned int nr_sec_clean = 9;
 
 	trace_f2fs_gc_begin(sbi->sb, sync, background,
 				get_pages(sbi, F2FS_DIRTY_NODES),
@@ -1334,15 +1334,16 @@ gc_more:
 			gc_type = FG_GC;
 	}
 
-	if (gc_type == BG_GC) {
-		nr_sec_clean--;
-	}
-
 	/* f2fs_balance_fs doesn't need to do BG_GC in critical path. */
 	if (gc_type == BG_GC && !background) {
 		ret = -EINVAL;
 		goto stop;
 	}
+bg_gc_more:
+	if (gc_type == BG_GC) {
+		nr_sec_clean--;
+	}
+
 	if (!__get_victim(sbi, &segno, gc_type)) {
 		ret = -ENODATA;
 		goto stop;
@@ -1367,6 +1368,11 @@ gc_more:
 	if (sync)
 		goto stop;
 
+	if (gc_type == BG_GC) {
+		if(nr_sec_clean)
+			goto bg_gc_more;
+	}
+
 	if (has_not_enough_free_secs(sbi, sec_freed, 0)) {
 		if (skipped_round <= MAX_SKIP_GC_COUNT ||
 					skipped_round * 2 < round) {
@@ -1383,10 +1389,6 @@ gc_more:
 		}
 		if (gc_type == FG_GC && !is_sbi_flag_set(sbi, SBI_CP_DISABLED))
 			ret = f2fs_write_checkpoint(sbi, &cpc);
-	}
-	if (gc_type == BG_GC) {
-		if(nr_sec_clean)
-			goto gc_more;
 	}
 stop:
 	SIT_I(sbi)->last_victim[ALLOC_NEXT] = 0;
