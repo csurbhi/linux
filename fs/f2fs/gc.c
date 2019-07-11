@@ -435,47 +435,57 @@ static const struct victim_selection default_v_ops = {
 	.get_victim = get_victim_by_default,
 };
 
-static struct inode *find_gc_inode(struct gc_inode_list *gc_list, nid_t ino)
+static struct f2fs_gc_inode *find_gc_inode(struct gc_inode_list *gc_list, nid_t ino)
 {
 	struct inode_entry *ie;
 
 	ie = radix_tree_lookup(&gc_list->iroot, ino);
 	if (ie)
-		return ie->gc_inode.inode;
+		return &(ie->gc_inode);
 	return NULL;
 }
 
-static void add_gc_inode(struct gc_inode_list *gc_list, struct inode *inode)
+static void add_gc_inode(struct gc_inode_list *gc_list, struct inode *inode,
+			 unsigned int ofs_in_node, unsigned int ofs_in_seg,
+			 struct f2fs_summary *sum)
 {
 	struct inode_entry *new_ie;
 	struct offset_entry *entry;
+	struct f2fs_gc_inode *gc_inode;
 
-	if (inode == find_gc_inode(gc_list, inode->i_ino)) {
+	entry = f2fs_kmem_cache_alloc(f2fs_offset_entry_slab, GFP_NOFS);
+	entry->ofs_in_node = ofs_in_node;
+	entry->ofs_in_seg = ofs_in_seg;
+	entry->sum = sum;
+	gc_inode = find_gc_inode(gc_list, inode->i_ino);
+	if (gc_inode) {
 		/* Add the block nr on this inode */
+		list_add_tail(&entry->list, &gc_inode->off_list.list);
 		iput(inode);
 		return;
 	}
 	new_ie = f2fs_kmem_cache_alloc(f2fs_inode_entry_slab, GFP_NOFS);
 	new_ie->gc_inode.inode = inode;
 
+	/* Add the block nr on this inode */
+	INIT_LIST_HEAD(&new_ie->gc_inode.off_list.list);
+	list_add_tail(&entry->list, &new_ie->gc_inode.off_list.list);
+
 	f2fs_radix_tree_insert(&gc_list->iroot, inode->i_ino, new_ie);
 	list_add_tail(&new_ie->list, &gc_list->ilist);
-
-	/* Add the block nr on this inode */
-	LIST_HEAD_INIT(&new_ie->gc_inode.off_list);
-	entry = f2fs_kmem_cache_alloc(f2fs_offset_entry_slab, GFP_NOFS);
-	entry->offset = offset;
-	list_add_tail(&entry->offset_list, &new_ie->gc_inode.off_list)
 }
 
 static void put_gc_inode(struct gc_inode_list *gc_list)
 {
 	struct inode_entry *ie, *next_ie;
-	struct offset_entry *entry;
+	struct offset_entry *entry, *next_entry;
 	list_for_each_entry_safe(ie, next_ie, &gc_list->ilist, list) {
 		radix_tree_delete(&gc_list->iroot, ie->gc_inode.inode->i_ino);
-		list_for_each_entry_safe(entry, );
-		list_del(&ie->gc_inode.off_list);
+		list_for_each_entry_safe(entry, next_entry, &ie->gc_inode.off_list.list , list) {
+			list_del(&entry->list);
+			kmem_cache_free(f2fs_offset_entry_slab, entry);
+		}
+		list_del(&ie->gc_inode.off_list.list);
 		iput(ie->gc_inode.inode);
 		list_del(&ie->list);
 		kmem_cache_free(f2fs_inode_entry_slab, ie);
@@ -970,6 +980,77 @@ out:
 	return err;
 }
 
+static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
+				struct gc_inode_list *gc_list, int gc_type,
+				unsigned int segno, block_t start_addr)
+{
+	/* phase 4 */
+	struct inode_entry *ie, *next_ie;
+	struct offset_entry *entry, *next_entry;
+	struct inode *inode;
+	struct node_info dni; /* dnode info for the data */
+	unsigned int ofs_in_node, nofs, ofs_in_seg;
+	block_t start_bidx;
+	struct f2fs_summary *sum;
+	int submitted = 0;
+
+	list_for_each_entry_safe(ie, next_ie, &gc_list->ilist, list) {
+		inode = ie->gc_inode.inode;
+		if(unlikely(!inode)) {
+			continue;
+		}
+
+		struct f2fs_inode_info *fi = F2FS_I(inode);
+		bool locked = false;
+		int err;
+
+		if (S_ISREG(inode->i_mode)) {
+			if (!down_write_trylock(&fi->i_gc_rwsem[READ]))
+				continue;
+			if (!down_write_trylock(
+					&fi->i_gc_rwsem[WRITE])) {
+				sbi->skipped_gc_rwsem++;
+				up_write(&fi->i_gc_rwsem[READ]);
+				continue;
+			}
+			locked = true;
+
+			/* wait for all inflight aio data */
+			inode_dio_wait(inode);
+		}
+
+		list_for_each_entry_safe(entry, next_entry, &ie->gc_inode.off_list.list , list) {
+			ofs_in_node = entry->ofs_in_node;
+			ofs_in_seg = entry->ofs_in_seg;
+			sum = entry->sum;
+			/* Get an inode by ino with checking validity */
+			if (!is_alive(sbi, sum, &dni, start_addr + ofs_in_seg, &nofs))
+				continue;
+
+			start_bidx = f2fs_start_bidx_of_node(nofs, inode)
+								+ ofs_in_node;
+			if (f2fs_post_read_required(inode))
+				err = move_data_block(inode, start_bidx,
+							gc_type, segno, ofs_in_seg);
+			else
+				err = move_data_page(inode, start_bidx, gc_type,
+								segno, ofs_in_seg);
+
+			if (!err && (gc_type == FG_GC ||
+					f2fs_post_read_required(inode)))
+				submitted++;
+
+			if (locked) {
+				up_write(&fi->i_gc_rwsem[WRITE]);
+				up_write(&fi->i_gc_rwsem[READ]);
+			}
+
+			stat_inc_data_blk_count(sbi, 1, gc_type);
+		}
+	}
+	return submitted;
+}
+
 /*
  * This function tries to get parent node of victim data block, and identifies
  * data block validity. If the block is valid, copy that with cold status and
@@ -1052,7 +1133,7 @@ next_step:
 					iput(inode);
 					continue;
 				}
-				add_gc_inode(gc_list, inode);
+				add_gc_inode(gc_list, inode, ofs_in_node, off, entry);
 				continue;
 			}
 
@@ -1065,57 +1146,17 @@ next_step:
 			}
 
 			f2fs_put_page(data_page, 0);
-			add_gc_inode(gc_list, inode);
+			add_gc_inode(gc_list, inode, ofs_in_node, off, entry);
 			continue;
 		}
 
-		/* phase 4 */
-		inode = find_gc_inode(gc_list, dni.ino);
-		if (inode) {
-			struct f2fs_inode_info *fi = F2FS_I(inode);
-			bool locked = false;
-			int err;
-
-			if (S_ISREG(inode->i_mode)) {
-				if (!down_write_trylock(&fi->i_gc_rwsem[READ]))
-					continue;
-				if (!down_write_trylock(
-						&fi->i_gc_rwsem[WRITE])) {
-					sbi->skipped_gc_rwsem++;
-					up_write(&fi->i_gc_rwsem[READ]);
-					continue;
-				}
-				locked = true;
-
-				/* wait for all inflight aio data */
-				inode_dio_wait(inode);
-			}
-
-			start_bidx = f2fs_start_bidx_of_node(nofs, inode)
-								+ ofs_in_node;
-			if (f2fs_post_read_required(inode))
-				err = move_data_block(inode, start_bidx,
-							gc_type, segno, off);
-			else
-				err = move_data_page(inode, start_bidx, gc_type,
-								segno, off);
-
-			if (!err && (gc_type == FG_GC ||
-					f2fs_post_read_required(inode)))
-				submitted++;
-
-			if (locked) {
-				up_write(&fi->i_gc_rwsem[WRITE]);
-				up_write(&fi->i_gc_rwsem[READ]);
-			}
-
-			stat_inc_data_blk_count(sbi, 1, gc_type);
-		}
 	}
-
-	if (++phase < 5)
+	
+	if (++phase < 4)
 		goto next_step;
 
+	submitted += gc_move_inodes_pages(sbi, gc_list, gc_type, segno, start_addr);
+	
 	return submitted;
 }
 
