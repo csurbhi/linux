@@ -86,7 +86,7 @@ static int gc_thread_func(void *data)
 			stat_other_skip_bggc_count(sbi);
 			goto next;
 		}
-check_more:
+check_idle:
 		if (!is_idle(sbi, GC_TIME)) {
 			increase_sleep_time(gc_th, &wait_ms);
 			mutex_unlock(&sbi->gc_mutex);
@@ -998,6 +998,7 @@ static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 	block_t start_bidx;
 	struct f2fs_summary *sum;
 	int submitted = 0;
+	unsigned int segno;
 
 	list_for_each_entry_safe(ie, next_ie, &gc_list->ilist, list) {
 		inode = ie->gc_inode.inode;
@@ -1152,7 +1153,7 @@ next_step:
 			}
 
 			f2fs_put_page(data_page, 0);
-			add_gc_inode(gc_list, inode, ofs_in_node, off, entry);
+			add_gc_inode(gc_list, inode, ofs_in_node, segno, off, entry);
 			continue;
 		}
 
@@ -1280,6 +1281,8 @@ skip:
 		/* Write data pages together, so that the data pages
 		 * are written in a defragmented manner
 		 */
+		block_t start_addr;
+		start_addr = START_BLOCK(sbi, segno);
 		submitted += gc_move_inodes_pages(sbi, gc_list, gc_type, start_addr);
 	}
 
