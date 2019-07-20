@@ -86,7 +86,7 @@ static int gc_thread_func(void *data)
 			stat_other_skip_bggc_count(sbi);
 			goto next;
 		}
-
+check_more:
 		if (!is_idle(sbi, GC_TIME)) {
 			increase_sleep_time(gc_th, &wait_ms);
 			mutex_unlock(&sbi->gc_mutex);
@@ -104,6 +104,10 @@ do_gc:
 		/* if return value is not zero, no victim was selected */
 		if (f2fs_gc(sbi, test_opt(sbi, FORCE_FG_GC), true, NULL_SEGNO))
 			wait_ms = gc_th->no_gc_sleep_time;
+		else {
+			if(test_opt(sbi, FORCE_FG_GC))
+				goto check_idle;
+		}
 
 		trace_f2fs_background_gc(sbi->sb, wait_ms,
 				prefree_segments(sbi), free_segments(sbi));
