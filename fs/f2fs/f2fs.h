@@ -240,6 +240,7 @@ struct ino_entry {
 /* for the list of inodes to be GCed */
 struct offset_entry{
         unsigned int ofs_in_node;
+	unsigned int segno;
 	unsigned int ofs_in_seg;
 	struct f2fs_summary *sum;
         struct list_head list;

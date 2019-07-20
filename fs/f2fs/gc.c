@@ -446,8 +446,8 @@ static struct f2fs_gc_inode *find_gc_inode(struct gc_inode_list *gc_list, nid_t 
 }
 
 static void add_gc_inode(struct gc_inode_list *gc_list, struct inode *inode,
-			 unsigned int ofs_in_node, unsigned int ofs_in_seg,
-			 struct f2fs_summary *sum)
+			 unsigned int ofs_in_node, unsigned segno,
+			 unsigned int ofs_in_seg, struct f2fs_summary *sum)
 {
 	struct inode_entry *new_ie;
 	struct offset_entry *entry;
@@ -455,6 +455,7 @@ static void add_gc_inode(struct gc_inode_list *gc_list, struct inode *inode,
 
 	entry = f2fs_kmem_cache_alloc(f2fs_offset_entry_slab, GFP_NOFS);
 	entry->ofs_in_node = ofs_in_node;
+	entry->segno = segno;
 	entry->ofs_in_seg = ofs_in_seg;
 	entry->sum = sum;
 	gc_inode = find_gc_inode(gc_list, inode->i_ino);
@@ -982,7 +983,7 @@ out:
 
 static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 				struct gc_inode_list *gc_list, int gc_type,
-				unsigned int segno, block_t start_addr)
+				block_t start_addr)
 {
 	/* phase 4 */
 	struct inode_entry *ie, *next_ie;
@@ -1021,6 +1022,7 @@ static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 
 		list_for_each_entry_safe(entry, next_entry, &ie->gc_inode.off_list.list , list) {
 			ofs_in_node = entry->ofs_in_node;
+			segno = entry->segno;
 			ofs_in_seg = entry->ofs_in_seg;
 			sum = entry->sum;
 			/* Get an inode by ino with checking validity */
@@ -1133,7 +1135,7 @@ next_step:
 					iput(inode);
 					continue;
 				}
-				add_gc_inode(gc_list, inode, ofs_in_node, off, entry);
+				add_gc_inode(gc_list, inode, ofs_in_node, segno, off, entry);
 				continue;
 			}
 
@@ -1155,9 +1157,7 @@ next_step:
 	if (++phase < 4)
 		goto next_step;
 
-	submitted += gc_move_inodes_pages(sbi, gc_list, gc_type, segno, start_addr);
-	
-	return submitted;
+	return 0;
 }
 
 static int __get_victim(struct f2fs_sb_info *sbi, unsigned int *victim,
@@ -1183,6 +1183,7 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 	unsigned int segno = start_segno;
 	unsigned int end_segno = start_segno + sbi->segs_per_sec;
 	int seg_freed = 0, migrated = 0;
+	bool data_seg_sel = false;
 	unsigned char type = IS_DATASEG(get_seg_entry(sbi, segno)->type) ?
 						SUM_TYPE_DATA : SUM_TYPE_NODE;
 	int submitted = 0;
@@ -1247,12 +1248,15 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 		 *   - down_read(sentry_lock)     - change_curseg()
 		 *                                  - lock_page(sum_page)
 		 */
-		if (type == SUM_TYPE_NODE)
+		if (type == SUM_TYPE_NODE) {
 			submitted += gc_node_segment(sbi, sum->entries, segno,
 								gc_type);
-		else
-			submitted += gc_data_segment(sbi, sum->entries, gc_list,
+		}
+		else {
+			gc_data_segment(sbi, sum->entries, gc_list,
 							segno, gc_type);
+			data_seg_sel = true;
+		}
 
 		stat_inc_seg_count(sbi, type, gc_type);
 
@@ -1266,6 +1270,13 @@ freed:
 			sbi->next_victim_seg[gc_type] = segno + 1;
 skip:
 		f2fs_put_page(sum_page, 0);
+	}
+
+	if(data_seg_sel) {
+		/* Write data pages together, so that the data pages
+		 * are written in a defragmented manner
+		 */
+		submitted += gc_move_inodes_pages(sbi, gc_list, gc_type, start_addr);
 	}
 
 	if (submitted)
