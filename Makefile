@@ -2,8 +2,8 @@
 VERSION = 5
 PATCHLEVEL = 2
 SUBLEVEL = 0
-EXTRAVERSION =
-NAME = Bobtail Squid
+EXTRAVERSION = 3
+NAME = Bobtail Squid - multi seg clean and defrag
 
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
