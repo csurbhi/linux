@@ -262,6 +262,11 @@ struct fsync_node_entry {
 	unsigned int seq_id;	/* sequence id */
 };
 
+struct gc_seg_list {
+	struct list_head list; /* list head */
+	unsigned int segno; 
+};
+
 /* for the bitmap indicate blocks to be discarded */
 struct discard_entry {
 	struct list_head list;	/* list head */
