@@ -3464,6 +3464,7 @@ extern const struct inode_operations f2fs_encrypted_symlink_inode_operations;
 extern const struct inode_operations f2fs_special_inode_operations;
 extern struct kmem_cache *f2fs_inode_entry_slab;
 extern struct kmem_cache *f2fs_offset_entry_slab;
+extern struct kmem_cache *gc_seg_node_cache;
 
 /*
  * inline.c
