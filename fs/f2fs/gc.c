@@ -20,6 +20,8 @@
 #include "gc.h"
 #include <trace/events/f2fs.h>
 
+struct kmem_cache * gc_seg_node_cache;
+
 static int gc_thread_func(void *data)
 {
 	struct f2fs_sb_info *sbi = data;
@@ -208,6 +210,8 @@ static void select_policy(struct f2fs_sb_info *sbi, int gc_type,
 		p->offset = 0;
 	else
 		p->offset = SIT_I(sbi)->last_victim[p->gc_mode];
+
+	printk(KERN_NOTICE "\n p->offset: %d", p->offset);
 }
 
 static unsigned int get_max_cost(struct f2fs_sb_info *sbi,
@@ -1193,6 +1197,10 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 	int submitted = 0, ret = 0;
 	struct gc_seg_list *cur_seg, *next_seg;
 
+
+	list_for_each_entry_safe(cur_seg, next_seg, &seglist->list, list) {
+		printk(KERN_INFO "\n cleaning: %d segno ", cur_seg->segno);
+	}
 	
 	list_for_each_entry_safe(cur_seg, next_seg, &seglist->list, list) {
 		segno = cur_seg->segno;
@@ -1230,6 +1238,7 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 
 		if(ret)
 			continue;
+
 
 		blk_start_plug(&plug);
 
@@ -1326,7 +1335,7 @@ int f2fs_gc(struct f2fs_sb_info *sbi, bool sync,
 	unsigned long long first_skipped;
 	unsigned int skipped_round = 0, round = 0;
 	unsigned int nr_sec_clean = 0;
-	struct gc_seg_list new_seg;
+	struct gc_seg_list *new_seg;
 
 	trace_f2fs_gc_begin(sbi->sb, sync, background,
 				get_pages(sbi, F2FS_DIRTY_NODES),
@@ -1374,6 +1383,7 @@ gc_more:
 	}
 
 seg_more:
+	segno = NULL_SEGNO;
 	if (!__get_victim(sbi, &segno, gc_type)) {
 		if (!nr_sec_clean) {
 			ret = -ENODATA;
@@ -1388,9 +1398,10 @@ seg_more:
 			goto do_gc;
 		}
 	}
-
-	new_seg.segno =  segno;
-	list_add_tail(&new_seg.list, &seglist.list);
+	new_seg = kmem_cache_alloc(gc_seg_node_cache, GFP_NOFS);
+	new_seg->segno =  segno;
+	printk(KERN_NOTICE "\n Adding segment: %d ", segno);
+	list_add_tail(&new_seg->list, &seglist.list);
 
 	nr_sec_clean++;
 	if (nr_sec_clean < 9) {
@@ -1401,9 +1412,7 @@ do_gc:
 	seg_freed = do_garbage_collect(sbi, &seglist, &gc_list, gc_type);
 	list_for_each_entry_safe(cur_seg, next_seg, &seglist.list, list) {
 		list_del(&cur_seg->list);
-		/* we do not call kfree or equivalent as the 
-		 * address is on the stack of this function
-		 */
+		kmem_cache_free(gc_seg_node_cache, cur_seg);
 	}
 	if (gc_type == FG_GC && seg_freed == sbi->segs_per_sec)
 		sec_freed++;
