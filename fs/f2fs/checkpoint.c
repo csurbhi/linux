@@ -1688,6 +1688,7 @@ int __init f2fs_create_checkpoint_caches(void)
 		kmem_cache_destroy(f2fs_inode_entry_slab);
 		return -ENOMEM;
 	}
+
 	return 0;
 }
 
