@@ -1003,6 +1003,7 @@ static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 	struct f2fs_summary *sum;
 	int submitted = 0;
 	unsigned int segno;
+	int old_gc_type = BG_GC;
 
 	list_for_each_entry_safe(ie, next_ie, &gc_list->ilist, list) {
 		inode = ie->gc_inode.inode;
@@ -1040,16 +1041,27 @@ static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 
 			start_bidx = f2fs_start_bidx_of_node(nofs, inode)
 								+ ofs_in_node;
-			if (f2fs_post_read_required(inode))
+
+			old_gc_type = gc_type;
+			if (is_idle(sbi, GC_TIME)) {
+				gc_type = FG_GC;
+			}	
+			if (f2fs_post_read_required(inode)) 
 				err = move_data_block(inode, start_bidx,
 							gc_type, segno, ofs_in_seg);
-			else
+			else 
 				err = move_data_page(inode, start_bidx, gc_type,
 								segno, ofs_in_seg);
 
+
 			if (!err && (gc_type == FG_GC ||
 					f2fs_post_read_required(inode)))
-				submitted++;
+			{
+				if (old_gc_type == FG_GC)
+					submitted++;
+			}
+
+			gc_type = old_gc_type;
 
 			if (locked) {
 				up_write(&fi->i_gc_rwsem[WRITE]);
@@ -1299,6 +1311,14 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 	}
 
 	if(data_seg_sel) {
+		/* If the system is idle, read more segments and prepare 
+		 * for further cleaning
+		 */
+		if (is_idle(sbi, GC_TIME)) {
+			/* In phase two, write synchronously if system is idle
+			 */
+
+		}
 		/* Write data pages together, so that the data pages
 		 * are written in a defragmented manner
 		 */
