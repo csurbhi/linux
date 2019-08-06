@@ -760,6 +760,7 @@ static int move_data_block(struct inode *inode, block_t bidx,
 		.encrypted_page = NULL,
 		.in_list = false,
 		.retry = false,
+		.io_type = FS_GC_DATA_IO,
 	};
 	struct dnode_of_data dn;
 	struct f2fs_summary sum;
@@ -825,7 +826,8 @@ static int move_data_block(struct inode *inode, block_t bidx,
 		down_write(&fio.sbi->io_order_lock);
 
 	f2fs_allocate_data_block(fio.sbi, NULL, fio.old_blkaddr, &newaddr,
-					&sum, CURSEG_COLD_DATA, NULL, false);
+					&sum, CURSEG_COLD_DATA, NULL, false,
+					fio.io_type);
 
 	fio.encrypted_page = f2fs_pagecache_get_page(META_MAPPING(fio.sbi),
 				newaddr, FGP_LOCK | FGP_CREAT, GFP_NOFS);
@@ -890,7 +892,7 @@ write_page:
 		goto put_page_out;
 	}
 
-	f2fs_update_iostat(fio.sbi, FS_GC_DATA_IO, F2FS_BLKSIZE);
+	f2fs_update_iostat(fio.sbi, fio.io_type, F2FS_BLKSIZE);
 
 	f2fs_update_data_blkaddr(&dn, newaddr);
 	set_inode_flag(inode, FI_APPEND_WRITE);
@@ -903,7 +905,7 @@ recover_block:
 		up_write(&fio.sbi->io_order_lock);
 	if (err)
 		f2fs_do_replace_block(fio.sbi, &sum, newaddr, fio.old_blkaddr,
-								true, true);
+						true, true, fio.io_type);
 put_out:
 	f2fs_put_dnode(&dn);
 out:

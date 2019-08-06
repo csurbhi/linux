@@ -829,7 +829,7 @@ static int get_checkpoint_version(struct f2fs_sb_info *sbi, block_t cp_addr,
 			crc_offset > CP_CHKSUM_OFFSET) {
 		f2fs_put_page(*cp_page, 1);
 		f2fs_msg(sbi->sb, KERN_WARNING,
-			"invalid crc_offset: %zu", crc_offset);
+			"***** invalid crc_offset: %zu", crc_offset);
 		return -EINVAL;
 	}
 
@@ -877,6 +877,8 @@ static struct page *validate_checkpoint(struct f2fs_sb_info *sbi,
 	}
 	pre_version = *version;
 
+	printk(KERN_ERR "\n cp_pack_total_block_count: %d", cp_block->cp_pack_total_block_count);
+
 	cp_addr += le32_to_cpu(cp_block->cp_pack_total_block_count) - 1;
 	err = get_checkpoint_version(sbi, cp_addr, &cp_block,
 					&cp_page_2, version);
@@ -885,6 +887,7 @@ static struct page *validate_checkpoint(struct f2fs_sb_info *sbi,
 	cur_version = *version;
 
 	if (cur_version == pre_version) {
+		printk(KERN_ERR "\n CRC matches! %llu", cur_version);
 		*version = cur_version;
 		f2fs_put_page(cp_page_2, 1);
 		return cp_page_1;
@@ -916,6 +919,7 @@ int f2fs_get_valid_checkpoint(struct f2fs_sb_info *sbi)
 	 * sets( cp pack1 and cp pack 2)
 	 */
 	cp_start_blk_no = le32_to_cpu(fsb->cp_blkaddr);
+	printk(KERN_ERR "\n >>> cp_start_blk_no: %lld", cp_start_blk_no);
 	cp1 = validate_checkpoint(sbi, cp_start_blk_no, &cp1_version);
 
 	/* The second checkpoint pack should start at the next segment */
@@ -944,9 +948,12 @@ int f2fs_get_valid_checkpoint(struct f2fs_sb_info *sbi)
 	else
 		sbi->cur_cp_pack = 2;
 
+	printk(KERN_WARNING "\n Sanity checking checkpoint!, sbi->cur_cp_pack: %u", sbi->cur_cp_pack);
 	/* Sanity checking of checkpoint */
 	if (f2fs_sanity_check_ckpt(sbi))
 		goto free_fail_no_cp;
+
+	printk(KERN_WARNING "\n CKPT sanity checked!");
 
 	if (cp_blks <= 1)
 		goto done;
@@ -954,6 +961,8 @@ int f2fs_get_valid_checkpoint(struct f2fs_sb_info *sbi)
 	cp_blk_no = le32_to_cpu(fsb->cp_blkaddr);
 	if (cur_page == cp2)
 		cp_blk_no += 1 << le32_to_cpu(fsb->log_blocks_per_seg);
+
+	printk(KERN_WARNING "\n cp_blk_no: %u", cp_blk_no);
 
 	for (i = 1; i < cp_blks; i++) {
 		void *sit_bitmap_ptr;
@@ -966,6 +975,8 @@ int f2fs_get_valid_checkpoint(struct f2fs_sb_info *sbi)
 		memcpy(ckpt + i * blk_size, sit_bitmap_ptr, blk_size);
 		f2fs_put_page(cur_page, 1);
 	}
+
+	printk(KERN_WARNING "\n f2fs_get_valid_checkpoint():: read all Checkpoint blocks! ");
 done:
 	f2fs_put_page(cp1, 1);
 	f2fs_put_page(cp2, 1);
@@ -1049,6 +1060,8 @@ int f2fs_sync_dirty_inodes(struct f2fs_sb_info *sbi, enum inode_type type)
 	struct f2fs_inode_info *fi;
 	bool is_dir = (type == DIR_INODE);
 	unsigned long ino = 0;
+
+	printk(KERN_WARNING "\n Inside  f2fs_sync_dirty_inodes");
 
 	trace_f2fs_sync_dirty_inodes_enter(sbi->sb, is_dir,
 				get_pages(sbi, is_dir ?
@@ -1414,6 +1427,7 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 			cpu_to_le16(curseg_blkoff(sbi, i + CURSEG_HOT_NODE));
 		ckpt->alloc_type[i + CURSEG_HOT_NODE] =
 				curseg_alloc_type(sbi, i + CURSEG_HOT_NODE);
+		printk(KERN_WARNING "\n do_checkpoint():: segno: %u, next_blkoff: %u", ckpt->cur_node_segno[i], ckpt->cur_node_blkoff[i]);
 	}
 	for (i = 0; i < NR_CURSEG_DATA_TYPE; i++) {
 		ckpt->cur_data_segno[i] =
@@ -1422,10 +1436,32 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 			cpu_to_le16(curseg_blkoff(sbi, i + CURSEG_HOT_DATA));
 		ckpt->alloc_type[i + CURSEG_HOT_DATA] =
 				curseg_alloc_type(sbi, i + CURSEG_HOT_DATA);
+		printk(KERN_WARNING "\n do_checkpoint():: segno: %u, next_blkoff: %u", ckpt->cur_data_segno[i], ckpt->cur_data_blkoff[i]);
 	}
+
+	for (i = 0; i < NR_CURSEG_NODE_TYPE; i++) {
+		ckpt->cur_gc_node_segno[i] =
+			cpu_to_le32(curgcseg_segno(sbi, i + CURSEG_HOT_NODE));
+		ckpt->cur_gc_node_blkoff[i] =
+			cpu_to_le16(curgcseg_blkoff(sbi, i + CURSEG_HOT_NODE));
+		ckpt->gc_alloc_type[i + CURSEG_HOT_NODE] =
+				curgcseg_alloc_type(sbi, i + CURSEG_HOT_NODE);
+		printk(KERN_WARNING "\n do_checkpoint():: segno: %u, next_blkoff: %u", ckpt->cur_gc_node_segno[i], ckpt->cur_node_blkoff[i]);
+	}
+	for (i = 0; i < NR_CURSEG_DATA_TYPE; i++) {
+		ckpt->cur_gc_data_segno[i] =
+			cpu_to_le32(curgcseg_segno(sbi, i + CURSEG_HOT_DATA));
+		ckpt->cur_gc_data_blkoff[i] =
+			cpu_to_le16(curgcseg_blkoff(sbi, i + CURSEG_HOT_DATA));
+		ckpt->gc_alloc_type[i + CURSEG_HOT_DATA] =
+				curgcseg_alloc_type(sbi, i + CURSEG_HOT_DATA);
+		printk(KERN_WARNING "\n do_checkpoint():: segno: %u, next_blkoff: %u", ckpt->cur_gc_data_segno[i], ckpt->cur_data_blkoff[i]);
+	}
+
 
 	/* 2 cp  + n data seg summary + orphan inode blocks */
 	data_sum_blocks = f2fs_npages_for_summary_flush(sbi, false);
+	printk(KERN_WARNING "\n data_sum_blocks: %u", data_sum_blocks);
 	spin_lock_irqsave(&sbi->cp_lock, flags);
 	if (data_sum_blocks < NR_CURSEG_DATA_TYPE)
 		__set_ckpt_flags(ckpt, CP_COMPACT_SUM_FLAG);
@@ -1440,7 +1476,8 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	if (__remain_node_summaries(cpc->reason))
 		ckpt->cp_pack_total_block_count = cpu_to_le32(F2FS_CP_PACKS+
 				cp_payload_blks + data_sum_blocks +
-				orphan_blocks + NR_CURSEG_NODE_TYPE);
+				orphan_blocks + NR_CURSEG_NODE_TYPE + 
+				NR_CUR_GC_NODE_TYPE);
 	else
 		ckpt->cp_pack_total_block_count = cpu_to_le32(F2FS_CP_PACKS +
 				cp_payload_blks + data_sum_blocks +
@@ -1458,6 +1495,7 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 				le32_to_cpu(ckpt->checksum_offset)))
 				= cpu_to_le32(crc32);
 
+
 	start_blk = __start_cp_next_addr(sbi);
 
 	/* write nat bits */
@@ -1474,8 +1512,11 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 					(i << F2FS_BLKSIZE_BITS), blk + i);
 	}
 
+	printk(KERN_WARNING "\n writing checksum: %u at offset: %llu,  blk range:(%lu + %u)",
+		cpu_to_le32(crc32), le32_to_cpu(ckpt->checksum_offset), start_blk, cp_payload_blks);
 	/* write out checkpoint buffer at block 0 */
 	f2fs_update_meta_page(sbi, ckpt, start_blk++);
+	
 
 	for (i = 1; i < 1 + cp_payload_blks; i++)
 		f2fs_update_meta_page(sbi, (char *)ckpt + i * F2FS_BLKSIZE,
@@ -1499,6 +1540,7 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	if (__remain_node_summaries(cpc->reason)) {
 		f2fs_write_node_summaries(sbi, start_blk);
 		start_blk += NR_CURSEG_NODE_TYPE;
+		start_blk += NR_CUR_GC_NODE_TYPE;
 	}
 
 	/* update user_block_counts */
