@@ -875,10 +875,12 @@ static inline void set_new_dnode(struct dnode_of_data *dn, struct inode *inode,
 /*
  * For SIT manager
  *
- * By default, there are 6 active log areas across the whole main area.
+ * By default, there are 12 active log areas across the whole main area.
  * When considering hot and cold data separation to reduce cleaning overhead,
  * we split 3 for data logs and 3 for node logs as hot, warm, and cold types,
- * respectively.
+ * respectively that accept User I/O. Similarly there are 3 for node logs and
+ * 3 for data logs as hot, warm and cold types that accept GC I/O that arises
+ * through cleaning the logs.
  * In the current design, you should not change the numbers intentionally.
  * Instead, as a mount option such as active_logs=x, you can use 2, 4, and 6
  * logs individually according to the underlying devices. (default: 6)
@@ -887,6 +889,8 @@ static inline void set_new_dnode(struct dnode_of_data *dn, struct inode *inode,
  */
 #define	NR_CURSEG_DATA_TYPE	(3)
 #define NR_CURSEG_NODE_TYPE	(3)
+#define NR_CUR_GC_NODE_TYPE 	(3)
+#define NR_CUR_GC_DATA_TYPE	(3)
 #define NR_CURSEG_TYPE	(NR_CURSEG_DATA_TYPE + NR_CURSEG_NODE_TYPE)
 
 enum {
@@ -920,8 +924,10 @@ struct f2fs_sm_info {
 	struct free_segmap_info *free_info;	/* free segment information */
 	struct dirty_seglist_info *dirty_info;	/* dirty segment information */
 	struct curseg_info *curseg_array;	/* active segment information */
+	struct curseg_info *cur_gc_seg_array;	/* active gc segment information */
 
 	struct rw_semaphore curseg_lock;	/* for preventing curseg change */
+	struct rw_semaphore cur_gc_seg_lock;	/* for preventing cur_gc_seg change */
 
 	block_t seg0_blkaddr;		/* block address of 0'th segment */
 	block_t main_blkaddr;		/* start block address of main area */
@@ -1049,6 +1055,11 @@ enum iostat_type {
 	FS_CP_META_IO,			/* meta IOs from checkpoint */
 	FS_DISCARD,			/* discard */
 	NR_IO_TYPE,
+};
+
+enum cur_section_type {
+	FS_IO,				/* For user I/O */
+	GC_IO,				/* For GC I/O */
 };
 
 struct f2fs_io_info {
@@ -3110,7 +3121,8 @@ void f2fs_outplace_write_data(struct dnode_of_data *dn,
 int f2fs_inplace_write_data(struct f2fs_io_info *fio);
 void f2fs_do_replace_block(struct f2fs_sb_info *sbi, struct f2fs_summary *sum,
 			block_t old_blkaddr, block_t new_blkaddr,
-			bool recover_curseg, bool recover_newaddr);
+			bool recover_curseg, bool recover_newaddr,
+			enum iostat_type);
 void f2fs_replace_block(struct f2fs_sb_info *sbi, struct dnode_of_data *dn,
 			block_t old_addr, block_t new_addr,
 			unsigned char version, bool recover_curseg,
@@ -3118,7 +3130,8 @@ void f2fs_replace_block(struct f2fs_sb_info *sbi, struct dnode_of_data *dn,
 void f2fs_allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 			block_t old_blkaddr, block_t *new_blkaddr,
 			struct f2fs_summary *sum, int type,
-			struct f2fs_io_info *fio, bool add_list);
+			struct f2fs_io_info *fio, bool add_list,
+			enum iostat_type io_type);
 void f2fs_wait_on_page_writeback(struct page *page,
 			enum page_type type, bool ordered, bool locked);
 void f2fs_wait_on_block_writeback(struct inode *inode, block_t blkaddr);
@@ -3282,6 +3295,10 @@ struct f2fs_stat_info {
 	int curseg[NR_CURSEG_TYPE];
 	int cursec[NR_CURSEG_TYPE];
 	int curzone[NR_CURSEG_TYPE];
+	int curgcseg[NR_CURSEG_TYPE];
+	int curgcsec[NR_CURSEG_TYPE];
+	int curgczone[NR_CURSEG_TYPE];
+
 
 	unsigned int meta_count[META_MAX];
 	unsigned int segment_count[2];

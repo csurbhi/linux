@@ -36,6 +36,16 @@
 	 ((seg) == CURSEG_I(sbi, CURSEG_WARM_NODE)->segno) ||	\
 	 ((seg) == CURSEG_I(sbi, CURSEG_COLD_NODE)->segno))
 
+#define IS_CUR_GC_SEG(sbi, seg)						\
+	(((seg) == CUR_GC_SEG_I(sbi, CURSEG_HOT_DATA)->segno) ||	\
+	 ((seg) == CUR_GC_SEG_I(sbi, CURSEG_WARM_DATA)->segno) ||	\
+	 ((seg) == CUR_GC_SEG_I(sbi, CURSEG_COLD_DATA)->segno) ||	\
+	 ((seg) == CUR_GC_SEG_I(sbi, CURSEG_HOT_NODE)->segno) ||	\
+	 ((seg) == CUR_GC_SEG_I(sbi, CURSEG_WARM_NODE)->segno) ||	\
+	 ((seg) == CUR_GC_SEG_I(sbi, CURSEG_COLD_NODE)->segno))
+
+
+
 #define IS_CURSEC(sbi, secno)						\
 	(((secno) == CURSEG_I(sbi, CURSEG_HOT_DATA)->segno /		\
 	  (sbi)->segs_per_sec) ||	\
@@ -48,7 +58,19 @@
 	 ((secno) == CURSEG_I(sbi, CURSEG_WARM_NODE)->segno /		\
 	  (sbi)->segs_per_sec) ||	\
 	 ((secno) == CURSEG_I(sbi, CURSEG_COLD_NODE)->segno /		\
-	  (sbi)->segs_per_sec))	\
+	  (sbi)->segs_per_sec) ||	\
+	 ((secno) == CUR_GC_SEG_I(sbi, CURSEG_HOT_DATA)->segno /	\
+	  (sbi)->segs_per_sec) ||	\
+	 ((secno) == CUR_GC_SEG_I(sbi, CURSEG_WARM_DATA)->segno /	\
+	  (sbi)->segs_per_sec) ||	\
+	 ((secno) == CUR_GC_SEG_I(sbi, CURSEG_COLD_DATA)->segno /	\
+	  (sbi)->segs_per_sec) ||	\
+	 ((secno) == CUR_GC_SEG_I(sbi, CURSEG_HOT_NODE)->segno /	\
+	  (sbi)->segs_per_sec) ||	\
+	 ((secno) == CUR_GC_SEG_I(sbi, CURSEG_WARM_NODE)->segno /	\
+	  (sbi)->segs_per_sec) ||	\
+	 ((secno) == CUR_GC_SEG_I(sbi, CURSEG_COLD_NODE)->segno /	\
+	  (sbi)->segs_per_sec))				
 
 #define MAIN_BLKADDR(sbi)						\
 	(SM_I(sbi) ? SM_I(sbi)->main_blkaddr : 				\
@@ -197,7 +219,7 @@ struct sec_entry {
 };
 
 struct segment_allocation {
-	void (*allocate_segment)(struct f2fs_sb_info *, int, bool);
+	void (*allocate_segment)(struct f2fs_sb_info *, int, int, bool);
 };
 
 /*
@@ -312,6 +334,11 @@ static inline struct curseg_info *CURSEG_I(struct f2fs_sb_info *sbi, int type)
 	return (struct curseg_info *)(SM_I(sbi)->curseg_array + type);
 }
 
+static inline struct curseg_info *CUR_GC_SEG_I(struct f2fs_sb_info *sbi, int type)
+{
+	return (struct curseg_info *)(SM_I(sbi)->cur_gc_seg_array + type);
+}
+
 static inline struct seg_entry *get_seg_entry(struct f2fs_sb_info *sbi,
 						unsigned int segno)
 {
@@ -357,6 +384,7 @@ static inline void seg_info_from_raw_sit(struct seg_entry *se,
 #endif
 	se->type = GET_SIT_TYPE(rs);
 	se->mtime = le64_to_cpu(rs->mtime);
+	return;
 }
 
 static inline void __seg_info_to_raw_sit(struct seg_entry *se,
@@ -553,6 +581,14 @@ static inline bool has_curseg_enough_space(struct f2fs_sb_info *sbi)
 
 		if (node_blocks > left_blocks)
 			return false;
+
+		segno = CUR_GC_SEG_I(sbi, i)->segno;
+		left_blocks = sbi->blocks_per_seg -
+			get_seg_entry(sbi, segno)->ckpt_valid_blocks;
+
+		if (node_blocks > left_blocks)
+			return false;
+
 	}
 
 	/* check current data segment */
@@ -638,6 +674,13 @@ static inline unsigned int curseg_segno(struct f2fs_sb_info *sbi,
 	return curseg->segno;
 }
 
+static inline unsigned int curgcseg_segno(struct f2fs_sb_info *sbi,
+		int type)
+{
+	struct curseg_info *curseg = CUR_GC_SEG_I(sbi, type);
+	return curseg->segno;
+}
+
 static inline unsigned char curseg_alloc_type(struct f2fs_sb_info *sbi,
 		int type)
 {
@@ -645,9 +688,22 @@ static inline unsigned char curseg_alloc_type(struct f2fs_sb_info *sbi,
 	return curseg->alloc_type;
 }
 
+static inline unsigned char curgcseg_alloc_type(struct f2fs_sb_info *sbi,
+		int type)
+{
+	struct curseg_info *curseg = CUR_GC_SEG_I(sbi, type);
+	return curseg->alloc_type;
+}
+
 static inline unsigned short curseg_blkoff(struct f2fs_sb_info *sbi, int type)
 {
 	struct curseg_info *curseg = CURSEG_I(sbi, type);
+	return curseg->next_blkoff;
+}
+
+static inline unsigned short curgcseg_blkoff(struct f2fs_sb_info *sbi, int type)
+{
+	struct curseg_info *curseg = CUR_GC_SEG_I(sbi, type);
 	return curseg->next_blkoff;
 }
 
@@ -694,8 +750,8 @@ static inline int check_block_count(struct f2fs_sb_info *sbi,
 
 	if (unlikely(GET_SIT_VBLOCKS(raw_sit) != valid_blocks)) {
 		f2fs_msg(sbi->sb, KERN_ERR,
-				"Mismatch valid blocks %d vs. %d",
-					GET_SIT_VBLOCKS(raw_sit), valid_blocks);
+				"Mismatch valid blocks segno: %d %d vs. %d",
+					segno, GET_SIT_VBLOCKS(raw_sit), valid_blocks);
 		set_sbi_flag(sbi, SBI_NEED_FSCK);
 		return -EINVAL;
 	}
@@ -790,11 +846,12 @@ static inline block_t start_sum_block(struct f2fs_sb_info *sbi)
 		le32_to_cpu(F2FS_CKPT(sbi)->cp_pack_start_sum);
 }
 
-static inline block_t sum_blk_addr(struct f2fs_sb_info *sbi, int base, int type)
+static inline block_t sum_blk_addr(struct f2fs_sb_info *sbi, int base,
+					int type, int delta)
 {
 	return __start_cp_addr(sbi) +
 		le32_to_cpu(F2FS_CKPT(sbi)->cp_pack_total_block_count)
-				- (base + 1) + type;
+				- (base + 1) + type + delta;
 }
 
 static inline bool sec_usage_check(struct f2fs_sb_info *sbi, unsigned int secno)

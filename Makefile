@@ -2,8 +2,8 @@
 VERSION = 5
 PATCHLEVEL = 2
 SUBLEVEL = 0
-EXTRAVERSION = 4
-NAME = Bobtail Squid - multi seg clean and defrag + check idle time
+EXTRAVERSION = 6
+NAME = Bobtail Squid - gc frontier, BG_GC, multi seg clean and defrag + check idle time 
 
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"

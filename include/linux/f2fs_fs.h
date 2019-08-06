@@ -147,6 +147,13 @@ struct f2fs_checkpoint {
 	/* information of current data segments */
 	__le32 cur_data_segno[MAX_ACTIVE_DATA_LOGS];
 	__le16 cur_data_blkoff[MAX_ACTIVE_DATA_LOGS];
+	/* information of current GC node segments*/
+	__le32 cur_gc_node_segno[MAX_ACTIVE_NODE_LOGS];
+	__le16 cur_gc_node_blkoff[MAX_ACTIVE_NODE_LOGS];
+	/* information of current GC data segments */
+	__le32 cur_gc_data_segno[MAX_ACTIVE_DATA_LOGS];
+	__le16 cur_gc_data_blkoff[MAX_ACTIVE_DATA_LOGS];
+
 	__le32 ckpt_flags;		/* Flags : umount and journal_present */
 	__le32 cp_pack_total_block_count;	/* total # of one cp pack */
 	__le32 cp_pack_start_sum;	/* start block number of data summary */
@@ -159,6 +166,7 @@ struct f2fs_checkpoint {
 	__le64 elapsed_time;		/* mounted time */
 	/* allocation type of current segment */
 	unsigned char alloc_type[MAX_ACTIVE_LOGS];
+	unsigned char gc_alloc_type[MAX_ACTIVE_LOGS];
 
 	/* SIT and NAT version bitmap */
 	unsigned char sit_nat_version_bitmap[1];
@@ -283,7 +291,8 @@ enum {
 	COLD_BIT_SHIFT = 0,
 	FSYNC_BIT_SHIFT,
 	DENT_BIT_SHIFT,
-	OFFSET_BIT_SHIFT
+	OFFSET_BIT_SHIFT,
+	GC_BIT_SHIFT
 };
 
 #define OFFSET_BIT_MASK		(0x07)	/* (0x01 << OFFSET_BIT_SHIFT) - 1 */
