@@ -409,6 +409,7 @@ static inline int is_node(struct page *page, int type)
 #define is_cold_node(page)	is_node(page, COLD_BIT_SHIFT)
 #define is_fsync_dnode(page)	is_node(page, FSYNC_BIT_SHIFT)
 #define is_dent_dnode(page)	is_node(page, DENT_BIT_SHIFT)
+#define is_gc_node(page)	is_node(page, GC_BIT_SHIFT)
 
 static inline int is_inline_node(struct page *page)
 {
@@ -453,3 +454,6 @@ static inline void set_mark(struct page *page, int mark, int type)
 }
 #define set_dentry_mark(page, mark)	set_mark(page, mark, DENT_BIT_SHIFT)
 #define set_fsync_mark(page, mark)	set_mark(page, mark, FSYNC_BIT_SHIFT)
+#define set_gc_node(page)		set_mark(page, 1, GC_BIT_SHIFT)
+#define unset_gc_node(page)		set_mark(page, 0, GC_BIT_SHIFT)
+
