@@ -3006,8 +3006,8 @@ static int __get_segment_type_4(struct f2fs_io_info *fio)
 		else
 			return CURSEG_COLD_DATA;
 	} else {
-		if (IS_DNODE(fio->page) && is_cold_node(fio->page))
-			return CURSEG_WARM_NODE;
+		if (IS_DNODE(fio->page) && !is_cold_node(fio->page))
+			return CURSEG_HOT_NODE;
 		else
 			return CURSEG_COLD_NODE;
 	}
