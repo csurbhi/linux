@@ -2485,7 +2485,8 @@ static void new_curseg(struct f2fs_sb_info *sbi, int type, bool new_sec)
 
 	write_sum_page(sbi, curseg->sum_blk,
 				GET_SUM_BLOCK(sbi, segno));
-	if (type == CURSEG_WARM_DATA || type == CURSEG_COLD_DATA)
+	if (type == CURSEG_WARM_DATA || type == CURSEG_COLD_DATA ||
+			type == CURSEG_COLD_NODE)
 		dir = ALLOC_RIGHT;
 
 	if (test_opt(sbi, NOHEAP))
