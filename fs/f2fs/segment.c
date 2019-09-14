@@ -2145,8 +2145,8 @@ static void update_sit_entry(struct f2fs_sb_info *sbi, block_t blkaddr, int del)
 		if (IS_NODESEG(se->type) &&
 				!is_sbi_flag_set(sbi, SBI_CP_DISABLED)) {
 			if (!f2fs_test_and_set_bit(offset, se->ckpt_valid_map)) {
-				printk(KERN_WARNING "\n Added this node block to the
-						se->ckpt_valid_blocks");
+				printk(KERN_WARNING 
+				"\n Added this node block to the se->ckpt_valid_blocks");
 				se->ckpt_valid_blocks++;
 			}
 		}
@@ -3248,7 +3248,7 @@ reallocate:
 		 * do not make it persistent
 		 */
 		printk(KERN_WARNING "\n In do_write_page(), before unset_gc_node()");
-		unset_gc_node(fio->page);
+		//unset_gc_node(fio->page);
 	}
 	/* writeout dirty page into bdev */
 	f2fs_submit_page_write(fio);
