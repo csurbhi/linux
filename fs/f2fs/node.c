@@ -1582,7 +1582,7 @@ static int __write_node_page(struct page *page, bool atomic, bool *submitted,
 	}
 
 	fio.old_blkaddr = ni.blk_addr;
-	printk(KERN_INFO "\n calling f2fs_do_write_node_page!");
+	printk(KERN_INFO "\n calling f2fs_do_write_node_page!, io_type: %u", fio.io_type);
 	f2fs_do_write_node_page(nid, &fio);
 	set_node_addr(sbi, &ni, fio.new_blkaddr, is_fsync_dnode(page));
 	dec_page_count(sbi, F2FS_DIRTY_NODES);
@@ -1645,7 +1645,7 @@ int f2fs_move_node_page(struct page *node_page, int gc_type)
 		 * GC, so that the right block is allocated.
 		 * We unmark this before writing to the disk
 		 */
-		// set_gc_node(node_page);
+		set_gc_page(node_page);
 	}
 out_page:
 	unlock_page(node_page);

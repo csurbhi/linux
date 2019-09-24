@@ -974,6 +974,7 @@ retry:
 		}
 
 		set_cold_data(page);
+		set_gc_page(page);
 
 		err = f2fs_do_write_data_page(&fio);
 		if (err) {
