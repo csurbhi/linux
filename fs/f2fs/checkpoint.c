@@ -1668,6 +1668,14 @@ int f2fs_write_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	if (err)
 		goto stop;
 
+	/* since cur gc segments sits are not closed yet,
+	 * they are not marked dirty. we also do not
+	 * record them in the checkpoint. so we explicitly
+	 * mark them dirty here.
+	 */ 
+	mark_gc_cursit_dirty(sbi);
+
+	printk(KERN_WARNING "\n About to call f2fs_flush_sit_entries");	
 	f2fs_flush_sit_entries(sbi, cpc);
 
 	/* unlock all the fs_lock[] in do_checkpoint() */

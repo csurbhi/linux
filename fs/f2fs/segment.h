@@ -638,6 +638,8 @@ static inline int utilization(struct f2fs_sb_info *sbi)
 					sbi->user_block_count);
 }
 
+void mark_gc_cursit_dirty(struct f2fs_sb_info *);
+
 /*
  * Sometimes f2fs may be better to drop out-of-place update policy.
  * And, users can control the policy through sysfs entries.
@@ -764,6 +766,9 @@ static inline int check_block_count(struct f2fs_sb_info *sbi,
 					GET_SIT_VBLOCKS(raw_sit), segno);
 		set_sbi_flag(sbi, SBI_NEED_FSCK);
 		return -EINVAL;
+	}
+	if (IS_CUR_GC_SEG(sbi, segno)) {
+		printk(KERN_WARNING "\n segno: %u valid_block_count: %u", segno, valid_blocks);
 	}
 	return 0;
 }
