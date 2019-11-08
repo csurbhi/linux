@@ -3,7 +3,7 @@ VERSION = 5
 PATCHLEVEL = 2
 SUBLEVEL = 0
 EXTRAVERSION =
-NAME = Bobtail Squid
+NAME = Bobtail Squid supports defrag
 
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
