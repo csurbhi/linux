@@ -1215,6 +1215,9 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 
 	list_for_each_entry_safe(cur_seg, next_seg, &seglist->list, list) {
 		printk(KERN_INFO "\n cleaning: %d segno ", cur_seg->segno);
+		if (__is_large_section(sbi)) {
+			printk(KERN_INFO  " to %d segno", start_segno + sbi->segs_per_sec);
+		}
 	}
 	
 	list_for_each_entry_safe(cur_seg, next_seg, &seglist->list, list) {

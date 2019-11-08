@@ -3145,7 +3145,7 @@ void f2fs_allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 	else {
 		down_read(&SM_I(sbi)->curseg_lock);
 		curseg = CURSEG_I(sbi, type);
-		// printk("\n Allocating a block from the regular segment! write_type: %u type: %u", write_type, type);
+		printk("\n Allocating a block from the regular segment! write_type: %u type: %u", write_type, type);
 	}
 		
 	mutex_lock(&curseg->curseg_mutex);
