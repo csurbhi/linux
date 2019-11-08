@@ -1446,7 +1446,7 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 			cpu_to_le16(curgcseg_blkoff(sbi, i + CURSEG_HOT_NODE));
 		ckpt->gc_alloc_type[i + CURSEG_HOT_NODE] =
 				curgcseg_alloc_type(sbi, i + CURSEG_HOT_NODE);
-		printk(KERN_WARNING "\n do_checkpoint():: segno: %u, next_blkoff: %u", ckpt->cur_gc_node_segno[i], ckpt->cur_node_blkoff[i]);
+		printk(KERN_WARNING "\n do_checkpoint():: segno: %u, next_blkoff: %u", ckpt->cur_gc_node_segno[i], ckpt->cur_gc_node_blkoff[i]);
 	}
 	for (i = 0; i < NR_CURSEG_DATA_TYPE; i++) {
 		ckpt->cur_gc_data_segno[i] =
@@ -1455,7 +1455,7 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 			cpu_to_le16(curgcseg_blkoff(sbi, i + CURSEG_HOT_DATA));
 		ckpt->gc_alloc_type[i + CURSEG_HOT_DATA] =
 				curgcseg_alloc_type(sbi, i + CURSEG_HOT_DATA);
-		printk(KERN_WARNING "\n do_checkpoint():: segno: %u, next_blkoff: %u", ckpt->cur_gc_data_segno[i], ckpt->cur_data_blkoff[i]);
+		printk(KERN_WARNING "\n do_checkpoint():: segno: %u, next_blkoff: %u", ckpt->cur_gc_data_segno[i], ckpt->cur_gc_data_blkoff[i]);
 	}
 
 
