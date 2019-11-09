@@ -1645,7 +1645,7 @@ int f2fs_move_node_page(struct page *node_page, int gc_type)
 		 * GC, so that the right block is allocated.
 		 * We unmark this before writing to the disk
 		 */
-		// set_gc_page(node_page);
+		set_gc_page(node_page);
 	}
 out_page:
 	unlock_page(node_page);

@@ -3272,7 +3272,7 @@ static void do_write_page(struct f2fs_summary *sum, struct f2fs_io_info *fio)
 	else if (write_type == FS_GC_NODE_IO)
 		printk(KERN_INFO "\n write_type: %s", "FS_GC_NODE_IO");
 	else
-		printk(KERN_ERR "\n !!!!!!!!!!!!!!!!!!!!!!!Error write_type!!! ");
+		printk(KERN_INFO "\n write_tyep: %d", write_type);
 
 
 reallocate:
