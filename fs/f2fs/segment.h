@@ -767,9 +767,6 @@ static inline int check_block_count(struct f2fs_sb_info *sbi,
 		set_sbi_flag(sbi, SBI_NEED_FSCK);
 		return -EINVAL;
 	}
-	if (IS_CUR_GC_SEG(sbi, segno)) {
-		printk(KERN_WARNING "\n segno: %u valid_block_count: %u", segno, valid_blocks);
-	}
 	return 0;
 }
 

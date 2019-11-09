@@ -3141,6 +3141,7 @@ void f2fs_allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 	if ((write_type == FS_GC_DATA_IO) || (write_type == FS_GC_NODE_IO)) {
 		down_read(&SM_I(sbi)->cur_gc_seg_lock);
 		curseg = CUR_GC_SEG_I(sbi, type);
+		printk("\n Allocating a block from the GC segment! write_type: %u type: %u", write_type, type);
 	}
 	else {
 		down_read(&SM_I(sbi)->curseg_lock);
@@ -3262,6 +3263,18 @@ static void do_write_page(struct f2fs_summary *sum, struct f2fs_io_info *fio)
 		clear_gc_page(fio->page);
 		fio->io_type = write_type;
 	}
+	if (write_type == FS_DATA_IO)
+		printk(KERN_INFO "\n write_type: %s", "FS_DATA_IO");
+	else if (write_type == FS_NODE_IO)
+		printk(KERN_INFO "\n write_type: %s", "FS_NODE_IO");
+	else if (write_type == FS_GC_DATA_IO)
+		printk(KERN_INFO "\n write_type: %s", "FS_GC_DATA_IO");
+	else if (write_type == FS_GC_NODE_IO)
+		printk(KERN_INFO "\n write_type: %s", "FS_GC_NODE_IO");
+	else
+		printk(KERN_ERR "\n !!!!!!!!!!!!!!!!!!!!!!!Error write_type!!! ");
+
+
 reallocate:
 	f2fs_allocate_data_block(fio->sbi, fio->page, fio->old_blkaddr,
 			&fio->new_blkaddr, sum, type, fio, true, write_type);
@@ -4149,7 +4162,7 @@ void f2fs_flush_sit_entries(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 				sit_offset = SIT_ENTRY_OFFSET(sit_i, segno);
 				seg_info_to_raw_sit(se,
 						&raw_sit->entries[sit_offset]);
-				if (!check_block_count(sbi, segno,
+				if (check_block_count(sbi, segno,
 						&raw_sit->entries[sit_offset]))
 					printk(KERN_WARNING "\n segno: %u check_block_count failed!", segno);
 			}
