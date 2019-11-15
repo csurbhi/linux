@@ -877,7 +877,7 @@ static struct page *validate_checkpoint(struct f2fs_sb_info *sbi,
 	}
 	pre_version = *version;
 
-	printk(KERN_ERR "\n cp_pack_total_block_count: %d", cp_block->cp_pack_total_block_count);
+	//printk(KERN_ERR "\n cp_pack_total_block_count: %d", cp_block->cp_pack_total_block_count);
 
 	cp_addr += le32_to_cpu(cp_block->cp_pack_total_block_count) - 1;
 	err = get_checkpoint_version(sbi, cp_addr, &cp_block,
@@ -887,7 +887,7 @@ static struct page *validate_checkpoint(struct f2fs_sb_info *sbi,
 	cur_version = *version;
 
 	if (cur_version == pre_version) {
-		printk(KERN_ERR "\n CRC matches! %llu", cur_version);
+		//printk(KERN_ERR "\n CRC matches! %llu", cur_version);
 		*version = cur_version;
 		f2fs_put_page(cp_page_2, 1);
 		return cp_page_1;
@@ -919,7 +919,7 @@ int f2fs_get_valid_checkpoint(struct f2fs_sb_info *sbi)
 	 * sets( cp pack1 and cp pack 2)
 	 */
 	cp_start_blk_no = le32_to_cpu(fsb->cp_blkaddr);
-	printk(KERN_ERR "\n >>> cp_start_blk_no: %lld", cp_start_blk_no);
+	//printk(KERN_ERR "\n >>> cp_start_blk_no: %lld", cp_start_blk_no);
 	cp1 = validate_checkpoint(sbi, cp_start_blk_no, &cp1_version);
 
 	/* The second checkpoint pack should start at the next segment */
@@ -948,12 +948,12 @@ int f2fs_get_valid_checkpoint(struct f2fs_sb_info *sbi)
 	else
 		sbi->cur_cp_pack = 2;
 
-	printk(KERN_WARNING "\n Sanity checking checkpoint!, sbi->cur_cp_pack: %u", sbi->cur_cp_pack);
+	//printk(KERN_WARNING "\n Sanity checking checkpoint!, sbi->cur_cp_pack: %u", sbi->cur_cp_pack);
 	/* Sanity checking of checkpoint */
 	if (f2fs_sanity_check_ckpt(sbi))
 		goto free_fail_no_cp;
 
-	printk(KERN_WARNING "\n CKPT sanity checked!");
+	//printk(KERN_WARNING "\n CKPT sanity checked!");
 
 	if (cp_blks <= 1)
 		goto done;
@@ -962,7 +962,7 @@ int f2fs_get_valid_checkpoint(struct f2fs_sb_info *sbi)
 	if (cur_page == cp2)
 		cp_blk_no += 1 << le32_to_cpu(fsb->log_blocks_per_seg);
 
-	printk(KERN_WARNING "\n cp_blk_no: %u", cp_blk_no);
+	//printk(KERN_WARNING "\n cp_blk_no: %u", cp_blk_no);
 
 	for (i = 1; i < cp_blks; i++) {
 		void *sit_bitmap_ptr;
@@ -976,7 +976,7 @@ int f2fs_get_valid_checkpoint(struct f2fs_sb_info *sbi)
 		f2fs_put_page(cur_page, 1);
 	}
 
-	printk(KERN_WARNING "\n f2fs_get_valid_checkpoint():: read all Checkpoint blocks! ");
+	//printk(KERN_WARNING "\n f2fs_get_valid_checkpoint():: read all Checkpoint blocks! ");
 done:
 	f2fs_put_page(cp1, 1);
 	f2fs_put_page(cp2, 1);
@@ -1061,7 +1061,7 @@ int f2fs_sync_dirty_inodes(struct f2fs_sb_info *sbi, enum inode_type type)
 	bool is_dir = (type == DIR_INODE);
 	unsigned long ino = 0;
 
-	printk(KERN_WARNING "\n Inside  f2fs_sync_dirty_inodes");
+	//printk(KERN_WARNING "\n Inside  f2fs_sync_dirty_inodes");
 
 	trace_f2fs_sync_dirty_inodes_enter(sbi->sb, is_dir,
 				get_pages(sbi, is_dir ?
@@ -1427,7 +1427,7 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 			cpu_to_le16(curseg_blkoff(sbi, i + CURSEG_HOT_NODE));
 		ckpt->alloc_type[i + CURSEG_HOT_NODE] =
 				curseg_alloc_type(sbi, i + CURSEG_HOT_NODE);
-		printk(KERN_WARNING "\n do_checkpoint():: segno: %u, next_blkoff: %u", ckpt->cur_node_segno[i], ckpt->cur_node_blkoff[i]);
+		//printk(KERN_WARNING "\n do_checkpoint():: segno: %u, next_blkoff: %u", ckpt->cur_node_segno[i], ckpt->cur_node_blkoff[i]);
 	}
 	for (i = 0; i < NR_CURSEG_DATA_TYPE; i++) {
 		ckpt->cur_data_segno[i] =
@@ -1436,7 +1436,7 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 			cpu_to_le16(curseg_blkoff(sbi, i + CURSEG_HOT_DATA));
 		ckpt->alloc_type[i + CURSEG_HOT_DATA] =
 				curseg_alloc_type(sbi, i + CURSEG_HOT_DATA);
-		printk(KERN_WARNING "\n do_checkpoint():: segno: %u, next_blkoff: %u", ckpt->cur_data_segno[i], ckpt->cur_data_blkoff[i]);
+		//printk(KERN_WARNING "\n do_checkpoint():: segno: %u, next_blkoff: %u", ckpt->cur_data_segno[i], ckpt->cur_data_blkoff[i]);
 	}
 
 	for (i = 0; i < NR_CURSEG_NODE_TYPE; i++) {
@@ -1446,7 +1446,7 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 			cpu_to_le16(curgcseg_blkoff(sbi, i + CURSEG_HOT_NODE));
 		ckpt->gc_alloc_type[i + CURSEG_HOT_NODE] =
 				curgcseg_alloc_type(sbi, i + CURSEG_HOT_NODE);
-		printk(KERN_WARNING "\n do_checkpoint():: segno: %u, next_blkoff: %u", ckpt->cur_gc_node_segno[i], ckpt->cur_gc_node_blkoff[i]);
+		//printk(KERN_WARNING "\n do_checkpoint():: segno: %u, next_blkoff: %u", ckpt->cur_gc_node_segno[i], ckpt->cur_gc_node_blkoff[i]);
 	}
 	for (i = 0; i < NR_CURSEG_DATA_TYPE; i++) {
 		ckpt->cur_gc_data_segno[i] =
@@ -1455,13 +1455,13 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 			cpu_to_le16(curgcseg_blkoff(sbi, i + CURSEG_HOT_DATA));
 		ckpt->gc_alloc_type[i + CURSEG_HOT_DATA] =
 				curgcseg_alloc_type(sbi, i + CURSEG_HOT_DATA);
-		printk(KERN_WARNING "\n do_checkpoint():: segno: %u, next_blkoff: %u", ckpt->cur_gc_data_segno[i], ckpt->cur_gc_data_blkoff[i]);
+		//printk(KERN_WARNING "\n do_checkpoint():: segno: %u, next_blkoff: %u", ckpt->cur_gc_data_segno[i], ckpt->cur_gc_data_blkoff[i]);
 	}
 
 
 	/* 2 cp  + n data seg summary + orphan inode blocks */
 	data_sum_blocks = f2fs_npages_for_summary_flush(sbi, false);
-	printk(KERN_WARNING "\n data_sum_blocks: %u", data_sum_blocks);
+	//printk(KERN_WARNING "\n data_sum_blocks: %u", data_sum_blocks);
 	spin_lock_irqsave(&sbi->cp_lock, flags);
 	if (data_sum_blocks < NR_CURSEG_DATA_TYPE)
 		__set_ckpt_flags(ckpt, CP_COMPACT_SUM_FLAG);
@@ -1512,7 +1512,7 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 					(i << F2FS_BLKSIZE_BITS), blk + i);
 	}
 
-	printk(KERN_WARNING "\n writing checksum: %u at offset: %llu,  blk range:(%lu + %u)",
+	//printk(KERN_WARNING "\n writing checksum: %u at offset: %llu,  blk range:(%lu + %u)",
 		cpu_to_le32(crc32), le32_to_cpu(ckpt->checksum_offset), start_blk, cp_payload_blks);
 	/* write out checkpoint buffer at block 0 */
 	f2fs_update_meta_page(sbi, ckpt, start_blk++);
@@ -1675,7 +1675,7 @@ int f2fs_write_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	 */ 
 	mark_gc_cursit_dirty(sbi);
 
-	printk(KERN_WARNING "\n About to call f2fs_flush_sit_entries");	
+	//printk(KERN_WARNING "\n About to call f2fs_flush_sit_entries");	
 	f2fs_flush_sit_entries(sbi, cpc);
 
 	/* unlock all the fs_lock[] in do_checkpoint() */

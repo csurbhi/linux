@@ -3296,7 +3296,7 @@ try_onemore:
 		sbi->interval_time[DISABLE_TIME] = DEF_DISABLE_QUICK_INTERVAL;
 	}
 
-	printk(KERN_WARNING "\n f2fs_scan_devices()");
+	//printk(KERN_WARNING "\n f2fs_scan_devices()");
 	/* Initialize device list */
 	err = f2fs_scan_devices(sbi);
 	if (err) {
@@ -3327,7 +3327,7 @@ try_onemore:
 
 	f2fs_init_fsync_node_info(sbi);
 
-	printk(KERN_WARNING "\n about to f2fs_build_segment_manager");
+	//printk(KERN_WARNING "\n about to f2fs_build_segment_manager");
 
 	/* setup f2fs internal modules */
 	err = f2fs_build_segment_manager(sbi);
@@ -3336,7 +3336,7 @@ try_onemore:
 			"Failed to initialize F2FS segment manager");
 		goto free_sm;
 	}
-	printk(KERN_WARNING "\n about to f2fs_build_node_manager()");
+	//printk(KERN_WARNING "\n about to f2fs_build_node_manager()");
 	err = f2fs_build_node_manager(sbi);
 	if (err) {
 		f2fs_msg(sb, KERN_ERR,
@@ -3356,7 +3356,7 @@ try_onemore:
 		sbi->kbytes_written =
 			le64_to_cpu(seg_i->journal->info.kbytes_written);
 
-	printk(KERN_WARNING "\n About to f2fs_build_gc_manager()");
+	//printk(KERN_WARNING "\n About to f2fs_build_gc_manager()");
 
 	f2fs_build_gc_manager(sbi);
 
@@ -3392,7 +3392,7 @@ try_onemore:
 		goto free_node_inode;
 	}
 
-	printk(KERN_WARNING "\n made root dentry!. registering with sysfs");
+	//printk(KERN_WARNING "\n made root dentry!. registering with sysfs");
 
 	err = f2fs_register_sysfs(sbi);
 	if (err)
@@ -3412,7 +3412,7 @@ try_onemore:
 	if (err)
 		goto free_meta;
 
-	printk(KERN_WARNING "\n Orphan inodes recovered!");
+	//printk(KERN_WARNING "\n Orphan inodes recovered!");
 
 	if (unlikely(is_set_ckpt_flags(sbi, CP_DISABLED_FLAG)))
 		goto reset_checkpoint;

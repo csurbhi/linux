@@ -244,6 +244,7 @@ struct offset_entry{
 	unsigned int ofs_in_seg;
 	struct f2fs_summary *sum;
         struct list_head list;
+	block_t file_blk_nr;
 };
 
 struct f2fs_gc_inode {

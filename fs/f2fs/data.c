@@ -300,6 +300,8 @@ static inline void __submit_bio(struct f2fs_sb_info *sbi,
 		if (start == 0)
 			goto submit_io;
 
+		//printk(KERN_INFO "\n !! By default, F2fs_io_size: %d", F2FS_IO_SIZE(sbi));
+
 		/* fill dummy pages */
 		for (; start < F2FS_IO_SIZE(sbi); start++) {
 			struct page *page =

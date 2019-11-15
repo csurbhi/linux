@@ -13,6 +13,7 @@
 #include <linux/kthread.h>
 #include <linux/delay.h>
 #include <linux/freezer.h>
+#include <linux/list_sort.h>
 
 #include "f2fs.h"
 #include "node.h"
@@ -204,6 +205,8 @@ static void select_policy(struct f2fs_sb_info *sbi, int gc_type,
 			p->max_search > sbi->max_victim_search)
 		p->max_search = sbi->max_victim_search;
 
+	//printk(KERN_INFO "\n p->max_search : %d ", p->max_search);
+
 	/* let's select beginning hot/small space first in no_heap mode*/
 	if (test_opt(sbi, NOHEAP) &&
 		(type == CURSEG_HOT_DATA || IS_NODESEG(type)))
@@ -211,7 +214,7 @@ static void select_policy(struct f2fs_sb_info *sbi, int gc_type,
 	else
 		p->offset = SIT_I(sbi)->last_victim[p->gc_mode];
 
-	printk(KERN_NOTICE "\n p->offset: %d", p->offset);
+	//printk(KERN_NOTICE "\n p->offset: %d", p->offset);
 }
 
 static unsigned int get_max_cost(struct f2fs_sb_info *sbi,
@@ -330,6 +333,8 @@ static int get_victim_by_default(struct f2fs_sb_info *sbi,
 	p.min_segno = NULL_SEGNO;
 	p.min_cost = get_max_cost(sbi, &p);
 
+	//printk(KERN_INFO "\n Inside get_victim_by_default., type: %d gc_mode:%d", type, p.gc_mode);
+
 	if (*result != NULL_SEGNO) {
 		if (get_valid_blocks(sbi, *result, false) &&
 			!sec_usage_check(sbi, GET_SEC_FROM_SEG(sbi, *result)))
@@ -368,8 +373,11 @@ static int get_victim_by_default(struct f2fs_sb_info *sbi,
 		unsigned int segno;
 
 		segno = find_next_bit(p.dirty_segmap, last_segment, p.offset);
+		//printk(KERN_INFO "\n Considering segment: %d", segno);
 		if (segno >= last_segment) {
+			//printk(KERN_INFO "\n segno > last_segment (%d: %d)", segno, last_segment);
 			if (sm->last_victim[p.gc_mode]) {
+				//printk("\n Setting last victim");
 				last_segment =
 					sm->last_victim[p.gc_mode];
 				sm->last_victim[p.gc_mode] = 0;
@@ -390,15 +398,21 @@ static int get_victim_by_default(struct f2fs_sb_info *sbi,
 		}
 
 		secno = GET_SEC_FROM_SEG(sbi, segno);
+		//printk(KERN_INFO "\n secno: %d", secno);
+		//printk(KERN_INFO "\n nsearched: %d", nsearched);
 
-		if (sec_usage_check(sbi, secno))
+		if (sec_usage_check(sbi, secno)) {
+			//printk(KERN_ERR "\n Either cur sec or  cur_victim_seg");
 			goto next;
+		}
 		/* Don't touch checkpointed data */
 		if (unlikely(is_sbi_flag_set(sbi, SBI_CP_DISABLED) &&
 					get_ckpt_valid_blocks(sbi, segno)))
 			goto next;
-		if (gc_type == BG_GC && test_bit(secno, dirty_i->victim_secmap))
+		if (gc_type == BG_GC && test_bit(secno, dirty_i->victim_secmap)) {
+			//printk(KERN_INFO "\n test_bit(%d, dirty_i->victim_secmap) set, nsearched: %d", nsearched);
 			goto next;
+		}
 
 		cost = get_gc_cost(sbi, segno, &p);
 
@@ -436,6 +450,8 @@ out:
 				prefree_segments(sbi), free_segments(sbi));
 	mutex_unlock(&dirty_i->seglist_lock);
 
+	//printk(KERN_INFO "\n segno: %d", p.min_segno);
+
 	return (p.min_segno == NULL_SEGNO) ? 0 : 1;
 }
 
@@ -455,7 +471,8 @@ static struct f2fs_gc_inode *find_gc_inode(struct gc_inode_list *gc_list, nid_t 
 
 static void add_gc_inode(struct gc_inode_list *gc_list, struct inode *inode,
 			 unsigned int ofs_in_node, unsigned segno,
-			 unsigned int ofs_in_seg, struct f2fs_summary *sum)
+			 unsigned int ofs_in_seg, struct f2fs_summary *sum,
+			 block_t file_blk_nr)
 {
 	struct inode_entry *new_ie;
 	struct offset_entry *entry;
@@ -466,6 +483,7 @@ static void add_gc_inode(struct gc_inode_list *gc_list, struct inode *inode,
 	entry->segno = segno;
 	entry->ofs_in_seg = ofs_in_seg;
 	entry->sum = sum;
+	entry->file_blk_nr = file_blk_nr;
 	gc_inode = find_gc_inode(gc_list, inode->i_ino);
 	if (gc_inode) {
 		/* Add the block nr on this inode */
@@ -992,6 +1010,17 @@ out:
 	return err;
 }
 
+
+
+/* compare the file_blk_nr in the entry */
+int cmp_blk_nrs(void *priv, struct list_head *a, struct list_head *b)
+{
+	struct offset_entry * entry_a = list_entry(a, struct offset_entry, list);
+	struct offset_entry * entry_b = list_entry(a, struct offset_entry, list);
+
+	return (entry_a->file_blk_nr - entry_b->file_blk_nr);
+}
+
 static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 				struct gc_inode_list *gc_list, int gc_type,
 				block_t start_addr)
@@ -1033,11 +1062,15 @@ static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 			inode_dio_wait(inode);
 		}
 
+		/* sort the inode list */
+		list_sort(NULL, &ie->gc_inode.off_list.list, cmp_blk_nrs);
+
 		list_for_each_entry_safe(entry, next_entry, &ie->gc_inode.off_list.list , list) {
 			ofs_in_node = entry->ofs_in_node;
 			segno = entry->segno;
 			ofs_in_seg = entry->ofs_in_seg;
 			sum = entry->sum;
+			//printk(KERN_INFO "\n inode_nr: %lu, blk_nr: %lu", sum->nid, entry->file_blk_nr);
 			/* Get an inode by ino with checking validity */
 			if (!is_alive(sbi, sum, &dni, start_addr + ofs_in_seg, &nofs))
 				continue;
@@ -1045,10 +1078,12 @@ static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 			start_bidx = f2fs_start_bidx_of_node(nofs, inode)
 								+ ofs_in_node;
 
-			old_gc_type = gc_type;
+			old_gc_type = gc_type; 
+			/*
 			if (is_idle(sbi, GC_TIME)) {
 				gc_type = FG_GC;
-			}	
+			}
+			*/	
 			if (f2fs_post_read_required(inode)) 
 				err = move_data_block(inode, start_bidx,
 							gc_type, segno, ofs_in_seg);
@@ -1060,7 +1095,8 @@ static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 			if (!err && (gc_type == FG_GC ||
 					f2fs_post_read_required(inode)))
 			{
-				if (old_gc_type == FG_GC)
+				/*
+				if (old_gc_type == FG_GC) */
 					submitted++;
 			}
 
@@ -1159,7 +1195,7 @@ next_step:
 					iput(inode);
 					continue;
 				}
-				add_gc_inode(gc_list, inode, ofs_in_node, segno, off, entry);
+				add_gc_inode(gc_list, inode, ofs_in_node, segno, off, entry, start_bidx);
 				continue;
 			}
 
@@ -1172,7 +1208,7 @@ next_step:
 			}
 
 			f2fs_put_page(data_page, 0);
-			add_gc_inode(gc_list, inode, ofs_in_node, segno, off, entry);
+			add_gc_inode(gc_list, inode, ofs_in_node, segno, off, entry, start_bidx);
 			continue;
 		}
 
@@ -1214,9 +1250,9 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 
 
 	list_for_each_entry_safe(cur_seg, next_seg, &seglist->list, list) {
-		printk(KERN_INFO "\n cleaning: %d segno ", cur_seg->segno);
+		//printk(KERN_INFO "\n cleaning: %d segno ", cur_seg->segno);
 		if (__is_large_section(sbi)) {
-			printk(KERN_INFO  " to %d segno", start_segno + sbi->segs_per_sec);
+			//printk(KERN_INFO  " to %d segno", cur_seg->segno + sbi->segs_per_sec);
 		}
 	}
 	
@@ -1297,6 +1333,7 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 									gc_type);
 			}
 			else {
+				//printk(KERN_INFO "\n Cleaning data seg: %d segno ", cur_seg->segno);
 				gc_data_segment(sbi, sum->entries, gc_list,
 								segno, gc_type);
 				data_seg_sel = true;
@@ -1317,14 +1354,6 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 	}
 
 	if(data_seg_sel) {
-		/* If the system is idle, read more segments and prepare 
-		 * for further cleaning
-		 */
-		if (is_idle(sbi, GC_TIME)) {
-			/* In phase two, write synchronously if system is idle
-			 */
-
-		}
 		/* Write data pages together, so that the data pages
 		 * are written in a defragmented manner
 		 */
@@ -1372,16 +1401,20 @@ int f2fs_gc(struct f2fs_sb_info *sbi, bool sync,
 				reserved_segments(sbi),
 				prefree_segments(sbi));
 
+	//printk(KERN_NOTICE "\n Inside f2fs_gc! ");
+
 	cpc.reason = __get_cp_reason(sbi);
 	sbi->skipped_gc_rwsem = 0;
 	first_skipped = last_skipped;
 gc_more:
 	INIT_LIST_HEAD(&seglist.list);
 	if (unlikely(!(sbi->sb->s_flags & SB_ACTIVE))) {
+		//printk(KERN_ERR "\n (sbi->sb->s_flags & SB_ACTIVE) = 0");
 		ret = -EINVAL;
 		goto stop;
 	}
 	if (unlikely(f2fs_cp_error(sbi))) {
+		//printk(KERN_ERR "\n f2fs_cp_error() !!!!!!");
 		ret = -EIO;
 		goto stop;
 	}
@@ -1402,15 +1435,18 @@ gc_more:
 			gc_type = FG_GC;
 	}
 
+	//printk(KERN_INFO "\n gc_type: %d", gc_type);
+
 	/* f2fs_balance_fs doesn't need to do BG_GC in critical path. */
 	if (gc_type == BG_GC && !background) {
 		ret = -EINVAL;
 		goto stop;
 	}
-
+	// printk(KERN_INFO "\n About to find victim");
 seg_more:
 	segno = NULL_SEGNO;
 	if (!__get_victim(sbi, &segno, gc_type)) {
+		// printk(KERN_NOTICE "\n No more gc victim found!");
 		if (!nr_sec_clean) {
 			ret = -ENODATA;
 			goto stop;
@@ -1421,20 +1457,22 @@ seg_more:
 			 * segments to clean as of
 			 * now
 			 */
+			// printk(KERN_INFO "\n nr_sec_clean: %d", nr_sec_clean);
 			goto do_gc;
 		}
 	}
 	new_seg = kmem_cache_alloc(gc_seg_node_cache, GFP_NOFS);
 	new_seg->segno =  segno;
-	printk(KERN_NOTICE "\n Adding segment: %d ", segno);
+	//printk(KERN_NOTICE "\n Adding segment: %d ", segno);
 	list_add_tail(&new_seg->list, &seglist.list);
 
 	nr_sec_clean++;
-	if (nr_sec_clean < 9) {
+	if (nr_sec_clean < 20) {
 		goto seg_more;
 	}
 
 do_gc:
+	//printk(KERN_NOTICE "\n Cleaning %d zones", nr_sec_clean);
 	seg_freed = do_garbage_collect(sbi, &seglist, &gc_list, gc_type);
 	list_for_each_entry_safe(cur_seg, next_seg, &seglist.list, list) {
 		list_del(&cur_seg->list);

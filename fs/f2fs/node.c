@@ -1520,7 +1520,7 @@ static int __write_node_page(struct page *page, bool atomic, bool *submitted,
 	};
 	unsigned int seq;
 
-	printk(KERN_WARNING "\n Inside __write_node_page()");
+	//printk(KERN_WARNING "\n Inside __write_node_page()");
 	/* Not needed here, take care in do_write_page */
 	/*
 	if (is_gc_node(page))
@@ -1582,7 +1582,7 @@ static int __write_node_page(struct page *page, bool atomic, bool *submitted,
 	}
 
 	fio.old_blkaddr = ni.blk_addr;
-	printk(KERN_INFO "\n calling f2fs_do_write_node_page!, io_type: %u", fio.io_type);
+	//printk(KERN_INFO "\n calling f2fs_do_write_node_page!, io_type: %u", fio.io_type);
 	f2fs_do_write_node_page(nid, &fio);
 	set_node_addr(sbi, &ni, fio.new_blkaddr, is_fsync_dnode(page));
 	dec_page_count(sbi, F2FS_DIRTY_NODES);
@@ -1793,7 +1793,7 @@ int f2fs_sync_node_pages(struct f2fs_sb_info *sbi,
 
 	pagevec_init(&pvec);
 
-	printk(KERN_WARNING "\n in f2fs_sync_node_pages. io_type: %u", io_type);
+	//printk(KERN_WARNING "\n in f2fs_sync_node_pages. io_type: %u", io_type);
 
 next_step:
 	index = 0;
@@ -2355,7 +2355,7 @@ int f2fs_build_free_nids(struct f2fs_sb_info *sbi, bool sync, bool mount)
 	ret = __f2fs_build_free_nids(sbi, sync, mount);
 	mutex_unlock(&NM_I(sbi)->build_lock);
 
-	printk(KERN_WARNING "\n Returning from f2fs_build_free_nids\n");
+	//printk(KERN_WARNING "\n Returning from f2fs_build_free_nids\n");
 	return ret;
 }
 
@@ -3067,7 +3067,7 @@ int f2fs_build_node_manager(struct f2fs_sb_info *sbi)
 {
 	int err;
 
-	printk(KERN_WARNING "\n Inside f2fs_build_node_manager");
+	//printk(KERN_WARNING "\n Inside f2fs_build_node_manager");
 
 	sbi->nm_info = f2fs_kzalloc(sbi, sizeof(struct f2fs_nm_info),
 							GFP_KERNEL);
@@ -3085,7 +3085,7 @@ int f2fs_build_node_manager(struct f2fs_sb_info *sbi)
 	/* load free nid status from nat_bits table */
 	load_free_nid_bitmap(sbi);
 
-	printk(KERN_WARNING "\n About to return from f2fs_build_node_manager");
+	//printk(KERN_WARNING "\n About to return from f2fs_build_node_manager");
 	return f2fs_build_free_nids(sbi, true, true);
 }
 

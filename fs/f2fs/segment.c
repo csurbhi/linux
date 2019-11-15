@@ -2088,7 +2088,7 @@ void mark_gc_cursit_dirty(struct f2fs_sb_info *sbi)
 	unsigned int segno;
 	int i;
 
-	printk(KERN_WARNING "\n Inside mark_gc_cursit_dirty"); 
+	//printk(KERN_WARNING "\n Inside mark_gc_cursit_dirty"); 
 
 	for (i = 0; i < NR_CURSEG_DATA_TYPE; i++) {
 		segno = cpu_to_le32(curgcseg_segno(sbi, i + CURSEG_HOT_DATA));
@@ -2098,9 +2098,9 @@ void mark_gc_cursit_dirty(struct f2fs_sb_info *sbi)
 
 	for (i = 0; i < NR_CURSEG_NODE_TYPE; i++) {
 		segno = cpu_to_le32(curgcseg_segno(sbi, i + CURSEG_HOT_NODE));
-		printk(KERN_WARNING "\n Adding segno: %d sit entry dirty, next_blkoff: %u", segno, curgcseg_blkoff(sbi, i + CURSEG_HOT_NODE));
+	//	printk(KERN_WARNING "\n Adding segno: %d sit entry dirty, next_blkoff: %u", segno, curgcseg_blkoff(sbi, i + CURSEG_HOT_NODE));
 		if (curgcseg_blkoff(sbi, i + CURSEG_HOT_NODE)) {
-			printk(" Marking dirty!!");
+		// 	printk(" Marking dirty!!");
 			__mark_sit_entry_dirty(sbi, segno);
 		}
 	}
@@ -2110,7 +2110,7 @@ static void __set_sit_entry_type(struct f2fs_sb_info *sbi, int type,
 					unsigned int segno, int modified)
 {
 	struct seg_entry *se = get_seg_entry(sbi, segno);
-	printk(KERN_WARNING "\n setting segno: %u -> type: %s", segno, IS_NODESEG(type) ? "Node": "Data");
+	//printk(KERN_WARNING "\n setting segno: %u -> type: %s", segno, IS_NODESEG(type) ? "Node": "Data");
 	se->type = type;
 	if (modified)
 		__mark_sit_entry_dirty(sbi, segno);
@@ -2169,8 +2169,8 @@ static void update_sit_entry(struct f2fs_sb_info *sbi, block_t blkaddr, int del)
 		if (IS_NODESEG(se->type) &&
 				!is_sbi_flag_set(sbi, SBI_CP_DISABLED)) {
 			if (!f2fs_test_and_set_bit(offset, se->ckpt_valid_map)) {
-				printk(KERN_WARNING 
-				"\n Added this node block to the se->ckpt_valid_blocks");
+				/*printk(KERN_WARNING 
+				"\n Added this node block to the se->ckpt_valid_blocks"); */
 				se->ckpt_valid_blocks++;
 			}
 		}
@@ -3141,19 +3141,21 @@ void f2fs_allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 	if ((write_type == FS_GC_DATA_IO) || (write_type == FS_GC_NODE_IO)) {
 		down_read(&SM_I(sbi)->cur_gc_seg_lock);
 		curseg = CUR_GC_SEG_I(sbi, type);
-		printk("\n Allocating a block from the GC segment! write_type: %u type: %u", write_type, type);
+		//printk("\n Allocating a block from the GC segment! write_type: %u type: %u", write_type, type);
 	}
 	else {
 		down_read(&SM_I(sbi)->curseg_lock);
 		curseg = CURSEG_I(sbi, type);
-		printk("\n Allocating a block from the regular segment! write_type: %u type: %u", write_type, type);
+		//printk("\n Allocating a block from the regular segment! write_type: %u type: %u", write_type, type);
 	}
 		
 	mutex_lock(&curseg->curseg_mutex);
 	down_write(&sit_i->sentry_lock);
 
+	/*
 	printk(KERN_WARNING "segno: %u START_BLOCK(sbi, (curseg)->segno): %u", curseg->segno, START_BLOCK(sbi, (curseg)->segno));
 	printk(KERN_WARNING "(curseg)->next_blkoff: %u", (curseg)->next_blkoff);
+	*/
 	
 	*new_blkaddr = NEXT_FREE_BLKADDR(sbi, curseg);
 
@@ -3172,7 +3174,7 @@ void f2fs_allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 
 	__refresh_next_blkoff(sbi, curseg);
 
-	printk(KERN_WARNING "\n After refresh, curseg->next_blkoff: %u", curseg->next_blkoff);
+	//printk(KERN_WARNING "\n After refresh, curseg->next_blkoff: %u", curseg->next_blkoff);
 
 	stat_inc_block_count(sbi, curseg);
 
@@ -3180,7 +3182,7 @@ void f2fs_allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 	 * SIT information should be updated before segment allocation,
 	 * since SSR needs latest valid block information.
 	 */
-	printk(KERN_WARNING "\n About to call update_sit_entry");
+	//printk(KERN_WARNING "\n About to call update_sit_entry");
 	update_sit_entry(sbi, *new_blkaddr, 1);
 	if (GET_SEGNO(sbi, old_blkaddr) != NULL_SEGNO)
 		update_sit_entry(sbi, old_blkaddr, -1);
@@ -3263,6 +3265,7 @@ static void do_write_page(struct f2fs_summary *sum, struct f2fs_io_info *fio)
 		clear_gc_page(fio->page);
 		fio->io_type = write_type;
 	}
+	/*
 	if (write_type == FS_DATA_IO)
 		printk(KERN_INFO "\n write_type: %s", "FS_DATA_IO");
 	else if (write_type == FS_NODE_IO)
@@ -3273,7 +3276,7 @@ static void do_write_page(struct f2fs_summary *sum, struct f2fs_io_info *fio)
 		printk(KERN_INFO "\n write_type: %s", "FS_GC_NODE_IO");
 	else
 		printk(KERN_INFO "\n write_tyep: %d", write_type);
-
+	*/
 
 reallocate:
 	f2fs_allocate_data_block(fio->sbi, fio->page, fio->old_blkaddr,
@@ -3327,7 +3330,7 @@ void f2fs_do_write_node_page(unsigned int nid, struct f2fs_io_info *fio)
 	struct f2fs_summary sum;
 
 	set_summary(&sum, nid, 0, 0);
-	printk(KERN_WARNING "\n f2fs_do_write_node_page(): fio->io_type: %u node->footer.flag: %u", fio->io_type, F2FS_NODE(fio->page)->footer.flag);
+	//printk(KERN_WARNING "\n f2fs_do_write_node_page(): fio->io_type: %u node->footer.flag: %u", fio->io_type, F2FS_NODE(fio->page)->footer.flag);
 	do_write_page(&sum, fio);
 
 	f2fs_update_iostat(fio->sbi, fio->io_type, F2FS_BLKSIZE);
