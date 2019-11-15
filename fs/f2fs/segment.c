@@ -3551,7 +3551,7 @@ static int read_compacted_summaries(struct f2fs_sb_info *sbi)
 
 	start = start_sum_block(sbi);
 
-	// printk(KERN_WARNING "\n read_compacted_summaries: start: %u", start);
+	//printk(KERN_WARNING "\n read_compacted_summaries: start: %u", start);
 
 	page = f2fs_get_meta_page(sbi, start++);
 	if (IS_ERR(page))
@@ -3761,14 +3761,14 @@ static int restore_curseg_summaries(struct f2fs_sb_info *sbi)
 	int type = CURSEG_HOT_DATA;
 	int err;
 
-	printk(KERN_WARNING "\n Entering restrore_curseg_summaries()");
+	//printk(KERN_WARNING "\n Entering restrore_curseg_summaries()");
 	if (is_set_ckpt_flags(sbi, CP_COMPACT_SUM_FLAG)) {
 		int npages = f2fs_npages_for_summary_flush(sbi, true);
 
 		if (npages >= 2)
 			f2fs_ra_meta_pages(sbi, start_sum_block(sbi), npages,
 							META_CP, true);
-		printk(KERN_WARNING "\n about to read_compacted_summaries");
+		//printk(KERN_WARNING "\n about to read_compacted_summaries");
 		/* restore for compacted data summary */
 		err = read_compacted_summaries(sbi);
 		if (err)
@@ -3776,7 +3776,7 @@ static int restore_curseg_summaries(struct f2fs_sb_info *sbi)
 		type = CURSEG_HOT_NODE;
 	}
 
-	printk(KERN_WARNING "\n read_compacted_summaries() dones! ");
+	//printk(KERN_WARNING "\n read_compacted_summaries() dones! ");
 
 	if (__exist_node_summaries(sbi))
 		f2fs_ra_meta_pages(sbi, sum_blk_addr(sbi, NR_CURSEG_TYPE, type, 0),
@@ -3791,7 +3791,7 @@ static int restore_curseg_summaries(struct f2fs_sb_info *sbi)
 		if (err)
 			return err;
 	}
-	printk(KERN_WARNING "\n read_normal_summaries() done! ");
+	//printk(KERN_WARNING "\n read_normal_summaries() done! ");
 
 	/* sanity check for summary blocks */
 	/*
@@ -3818,7 +3818,7 @@ static void write_compacted_summaries(struct f2fs_sb_info *sbi, block_t blkaddr)
 	int i, j;
 	unsigned short blkoff;
 
-	printk(KERN_WARNING "\n Inside write_compacted_summaries");
+	//printk(KERN_WARNING "\n Inside write_compacted_summaries");
 
 	page = f2fs_grab_meta_page(sbi, blkaddr++);
 	kaddr = (unsigned char *)page_address(page);
@@ -3910,7 +3910,7 @@ static void write_normal_summaries(struct f2fs_sb_info *sbi,
 {
 	int i, end;
 
-	printk(KERN_WARNING "\n Inside write_normal_summaries()");
+	//printk(KERN_WARNING "\n Inside write_normal_summaries()");
 	if (IS_DATASEG(type))
 		end = type + NR_CURSEG_DATA_TYPE;
 	else
@@ -4133,7 +4133,7 @@ void f2fs_flush_sit_entries(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 			int offset, sit_offset;
 
 			if (IS_CUR_GC_SEG(sbi, segno)) {
-				printk(KERN_WARNING "\n in flush_sit_entries for cur gc seg! ");
+				//printk(KERN_WARNING "\n in flush_sit_entries for cur gc seg! ");
 			}
 			se = get_seg_entry(sbi, segno);
 #ifdef CONFIG_F2FS_CHECK_FS
@@ -4160,14 +4160,14 @@ void f2fs_flush_sit_entries(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 					&sit_in_journal(journal, offset));
 			} else {
 				if (IS_CUR_GC_SEG(sbi, segno)) {
-					printk(KERN_WARNING "\n in flush_sit_entries for cur gc seg! segno: %u", segno);
+					//printk(KERN_WARNING "\n in flush_sit_entries for cur gc seg! segno: %u", segno);
 				}
 				sit_offset = SIT_ENTRY_OFFSET(sit_i, segno);
 				seg_info_to_raw_sit(se,
 						&raw_sit->entries[sit_offset]);
 				if (check_block_count(sbi, segno,
 						&raw_sit->entries[sit_offset]))
-					printk(KERN_WARNING "\n segno: %u check_block_count failed!", segno);
+					//printk(KERN_WARNING "\n segno: %u check_block_count failed!", segno);
 			}
 
 			__clear_bit(segno, bitmap);
@@ -4400,8 +4400,8 @@ static int build_sit_entries(struct f2fs_sb_info *sbi)
 	int err = 0;
 	block_t total_node_blocks = 0;
 
-	printk(KERN_WARNING "\n Inside build_sit_entries, sit_blk_cnt: %d ", sit_blk_cnt);
-	printk(KERN_WARNING "\n sit_i->sents_per_block: %d", sit_i->sents_per_block);
+	//printk(KERN_WARNING "\n Inside build_sit_entries, sit_blk_cnt: %d ", sit_blk_cnt);
+	//printk(KERN_WARNING "\n sit_i->sents_per_block: %d", sit_i->sents_per_block);
 
 	do {
 		readed = f2fs_ra_meta_pages(sbi, start_blk, BIO_MAX_PAGES,
@@ -4416,7 +4416,7 @@ static int build_sit_entries(struct f2fs_sb_info *sbi)
 			se = &sit_i->sentries[start];
 			page = get_current_sit_page(sbi, start);
 			if (IS_ERR(page)) {
-				printk(KERN_WARNING "\n error on get_current_sit_page ");
+				//printk(KERN_WARNING "\n error on get_current_sit_page ");
 				return PTR_ERR(page);
 			}
 			sit_blk = (struct f2fs_sit_block *)page_address(page);
@@ -4425,12 +4425,12 @@ static int build_sit_entries(struct f2fs_sb_info *sbi)
 
 			err = check_block_count(sbi, start, &sit);
 			if (err) {
-				printk(KERN_WARNING "\n error on check_block_count");
+				//printk(KERN_WARNING "\n error on check_block_count");
 				return err;
 			}
 			seg_info_from_raw_sit(se, &sit);
 			if (IS_CUR_GC_SEG(sbi, start)) {
-				printk(KERN_WARNING "\n segno: %u se->type: %s", start, IS_DATASEG(se->type)? "Data seg" : "Node seg");
+				//printk(KERN_WARNING "\n segno: %u se->type: %s", start, IS_DATASEG(se->type)? "Data seg" : "Node seg");
 			}
 
 			if (IS_NODESEG(se->type))
@@ -4456,7 +4456,7 @@ static int build_sit_entries(struct f2fs_sb_info *sbi)
 		start_blk += readed;
 	} while (start_blk < sit_blk_cnt);
 
-	printk(KERN_WARNING "\n start_blk: %d, total_node_blocks:%u", start_blk, total_node_blocks);
+	//printk(KERN_WARNING "\n start_blk: %d, total_node_blocks:%u", start_blk, total_node_blocks);
 	down_read(&curseg->journal_rwsem);
 	for (i = 0; i < sits_in_cursum(journal); i++) {
 		unsigned int old_valid_blocks;
@@ -4504,14 +4504,14 @@ static int build_sit_entries(struct f2fs_sb_info *sbi)
 	up_read(&curseg->journal_rwsem);
 
 	if (!err && total_node_blocks != valid_node_count(sbi)) {
-		printk(KERN_WARNING "\n  ERROR on total_node_blocks! ");
+		//printk(KERN_WARNING "\n  ERROR on total_node_blocks! ");
 		f2fs_msg(sbi->sb, KERN_ERR,
 			"SIT is corrupted node# %u vs %u",
 			total_node_blocks, valid_node_count(sbi));
 		set_sbi_flag(sbi, SBI_NEED_FSCK);
 		err = -EINVAL;
 	}
-	printk(KERN_WARNING "\n Sit entries built!! ");
+	//printk(KERN_WARNING "\n Sit entries built!! ");
 	return err;
 }
 
@@ -4520,7 +4520,7 @@ static void init_free_segmap(struct f2fs_sb_info *sbi)
 	unsigned int start;
 	int type;
 
-	printk(KERN_WARNING "\n Inside init_free_segmap()");
+	//printk(KERN_WARNING "\n Inside init_free_segmap()");
 
 	for (start = 0; start < MAIN_SEGS(sbi); start++) {
 		struct seg_entry *sentry = get_seg_entry(sbi, start);
@@ -4540,7 +4540,7 @@ static void init_free_segmap(struct f2fs_sb_info *sbi)
 		__set_test_and_inuse(sbi, curseg_t->segno);
 	}
 
-	printk(KERN_WARNING "\n init_free_segmap() done! ");
+	//printk(KERN_WARNING "\n init_free_segmap() done! ");
 }
 
 static void init_dirty_segmap(struct f2fs_sb_info *sbi)
@@ -4578,7 +4578,7 @@ static int init_victim_secmap(struct f2fs_sb_info *sbi)
 	if (!dirty_i->victim_secmap)
 		return -ENOMEM;
 
-	printk(KERN_WARNING "\n init_victim_secmap() done!");
+	//printk(KERN_WARNING "\n init_victim_secmap() done!");
 	return 0;
 }
 
@@ -4606,7 +4606,7 @@ static int build_dirty_segmap(struct f2fs_sb_info *sbi)
 	}
 
 	init_dirty_segmap(sbi);
-	printk(KERN_WARNING "\n build_dirty_segmap() almost done!!");
+	//printk(KERN_WARNING "\n build_dirty_segmap() almost done!!");
 	return init_victim_secmap(sbi);
 }
 
@@ -4618,7 +4618,7 @@ static void init_min_max_mtime(struct f2fs_sb_info *sbi)
 	struct sit_info *sit_i = SIT_I(sbi);
 	unsigned int segno;
 
-	printk(KERN_WARNING "\n Inside init_min_max_mtime");
+	//printk(KERN_WARNING "\n Inside init_min_max_mtime");
 	down_write(&sit_i->sentry_lock);
 
 	sit_i->min_mtime = ULLONG_MAX;
@@ -4637,7 +4637,7 @@ static void init_min_max_mtime(struct f2fs_sb_info *sbi)
 	}
 	sit_i->max_mtime = get_mtime(sbi, false);
 	up_write(&sit_i->sentry_lock);
-	printk("\n Returning from init_min_max_mtime\n");
+	//printk("\n Returning from init_min_max_mtime\n");
 }
 
 int f2fs_build_segment_manager(struct f2fs_sb_info *sbi)
@@ -4690,31 +4690,31 @@ int f2fs_build_segment_manager(struct f2fs_sb_info *sbi)
 	err = build_sit_info(sbi);
 	if (err)
 		return err;
-	printk(KERN_WARNING "\n about to build_free_segmap()");
+	//printk(KERN_WARNING "\n about to build_free_segmap()");
 	err = build_free_segmap(sbi);
 	if (err)
 		return err;
-	printk(KERN_WARNING "\n about to build_free_curseg()");
+	//printk(KERN_WARNING "\n about to build_free_curseg()");
 	err = build_curseg(sbi);
 	if (err)
 		return err;
 
-	printk(KERN_WARNING "\n about to build_sit_entries()");
+	//printk(KERN_WARNING "\n about to build_sit_entries()");
 	/* reinit free segmap based on SIT */
 	err = build_sit_entries(sbi);
 	if (err)
 		return err;
-	printk(KERN_WARNING "\n Build_sit_entries() done!!");
+	//printk(KERN_WARNING "\n Build_sit_entries() done!!");
 
-	printk(KERN_WARNING "\n about to init_free_segmap()");
+	//printk(KERN_WARNING "\n about to init_free_segmap()");
 	init_free_segmap(sbi);
-	printk(KERN_WARNING "\n about to build_dirty_segmap()");
+	//printk(KERN_WARNING "\n about to build_dirty_segmap()");
 	err = build_dirty_segmap(sbi);
 	if (err)
 		return err;
 
 	init_min_max_mtime(sbi);
-	printk(KERN_WARNING "\n Returning from f2fs_build_segment_manager");
+	//printk(KERN_WARNING "\n Returning from f2fs_build_segment_manager");
 	return 0;
 }
 
