@@ -1511,8 +1511,8 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 					(i << F2FS_BLKSIZE_BITS), blk + i);
 	}
 
-	printk(KERN_WARNING "\n writing checksum: %u at offset: %llu,  blk range:(%lu + %u)",
-		cpu_to_le32(crc32), le32_to_cpu(ckpt->checksum_offset), start_blk, cp_payload_blks);
+	//printk(KERN_WARNING "\n writing checksum: %u at offset: %llu,  blk range:(%lu + %u)",
+		//cpu_to_le32(crc32), le32_to_cpu(ckpt->checksum_offset), start_blk, cp_payload_blks);
 	/* write out checkpoint buffer at block 0 */
 	f2fs_update_meta_page(sbi, ckpt, start_blk++);
 	

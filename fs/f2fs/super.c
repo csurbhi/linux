@@ -3493,6 +3493,9 @@ reset_checkpoint:
 			sbi->valid_super_block ? 1 : 2, err);
 	}
 
+	atomic64_set(&sbi->gc_writes, 0);
+	atomic64_set(&sbi->app_writes, 0);
+
 	f2fs_join_shrinker(sbi);
 
 	f2fs_tuning_parameters(sbi);
