@@ -1467,7 +1467,7 @@ seg_more:
 	list_add_tail(&new_seg->list, &seglist.list);
 
 	nr_sec_clean++;
-	if (nr_sec_clean < 20) {
+	if (nr_sec_clean < 1) {
 		goto seg_more;
 	}
 

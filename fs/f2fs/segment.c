@@ -3252,10 +3252,21 @@ static void do_write_page(struct f2fs_summary *sum, struct f2fs_io_info *fio)
 	int type = __get_segment_type(fio);
 	bool keep_order = (test_opt(fio->sbi, LFS) && type == CURSEG_COLD_DATA);
 	int write_type = 0;
+	long long gc_writes_now = 0;
+	long long app_writes_now = 0;
 
 	if (keep_order)
 		down_read(&fio->sbi->io_order_lock);
 	write_type = fio->io_type;
+
+	gc_writes_now = atomic64_read(&fio->sbi->gc_writes);
+	app_writes_now = atomic64_read(&fio->sbi->app_writes);
+
+	if((gc_writes_now == LLONG_MAX-1) || (app_writes_now == LLONG_MAX-1)) {
+		printk(KERN_NOTICE "\n application writes: %ll, GC writes: %ll", app_writes_now, gc_writes_now);
+		atomic64_set(&fio->sbi->gc_writes, 0);
+		atomic64_set(&fio->sbi->app_writes, 0);
+	}
 
 	if (is_gc_page(fio->page)) {
 		if(fio->io_type == FS_DATA_IO)
@@ -3264,6 +3275,9 @@ static void do_write_page(struct f2fs_summary *sum, struct f2fs_io_info *fio)
 			write_type = FS_GC_NODE_IO;
 		clear_gc_page(fio->page);
 		fio->io_type = write_type;
+		atomic64_inc(&fio->sbi->gc_writes);
+	} else {
+		atomic64_inc(&fio->sbi->app_writes);
 	}
 	/*
 	if (write_type == FS_DATA_IO)
@@ -3582,7 +3596,7 @@ static int read_compacted_summaries(struct f2fs_sb_info *sbi)
 		reset_curseg(sbi, i, FS_IO, 0);
 		seg_i->alloc_type = ckpt->alloc_type[i];
 		seg_i->next_blkoff = blk_off;
-		// printk(KERN_WARNING "\n segno: %u next_blkoff: %u", segno, blk_off);
+		//printk(KERN_WARNING "\n segno: %u next_blkoff: %u", segno, blk_off);
 
 		if (seg_i->alloc_type == SSR)
 			blk_off = sbi->blocks_per_seg;
@@ -3614,13 +3628,13 @@ static int read_compacted_summaries(struct f2fs_sb_info *sbi)
 		seg_i = CUR_GC_SEG_I(sbi, i);
 
 		segno = le32_to_cpu(ckpt->cur_gc_data_segno[i]);
-		printk(KERN_WARNING "\n gc curseg: %d, segno: %u", i, segno);
+		//printk(KERN_WARNING "\n gc curseg: %d, segno: %u", i, segno);
 		blk_off = le16_to_cpu(ckpt->cur_gc_data_blkoff[i]);
 		seg_i->next_segno = segno;
 		reset_curseg(sbi, i, GC_IO, 0);
 		seg_i->alloc_type = ckpt->gc_alloc_type[i];
 		seg_i->next_blkoff = blk_off;
-		printk(KERN_WARNING "\n segno: %u next_blkoff: %u", segno, blk_off);
+		//printk(KERN_WARNING "\n segno: %u next_blkoff: %u", segno, blk_off);
 
 		if (seg_i->alloc_type == SSR)
 			blk_off = sbi->blocks_per_seg;
@@ -3737,9 +3751,11 @@ static int read_normal_summaries(struct f2fs_sb_info *sbi, int type, int cur_seg
 	memcpy(curseg->sum_blk->entries, sum->entries, SUM_ENTRY_SIZE);
 	memcpy(&curseg->sum_blk->footer, &sum->footer, SUM_FOOTER_SIZE);
 	curseg->next_segno = segno;
+	/*
 	if ((cur_seg_type == GC_IO) && IS_NODESEG(type)) {
 		printk(KERN_WARNING  "\n ***************** Calling reset_curseg for the GC node segments!""");
 	}
+	*/
 	reset_curseg(sbi, type, cur_seg_type, 0);
 	if (cur_seg_type == FS_IO)
 		curseg->alloc_type = ckpt->alloc_type[type];
@@ -4167,7 +4183,7 @@ void f2fs_flush_sit_entries(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 						&raw_sit->entries[sit_offset]);
 				if (check_block_count(sbi, segno,
 						&raw_sit->entries[sit_offset]))
-					//printk(KERN_WARNING "\n segno: %u check_block_count failed!", segno);
+					printk(KERN_WARNING "\n segno: %u check_block_count failed!", segno);
 			}
 
 			__clear_bit(segno, bitmap);

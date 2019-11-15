@@ -1309,6 +1309,10 @@ struct f2fs_sb_info {
 	/* migration granularity of garbage collection, unit: segment */
 	unsigned int migration_granularity;
 
+	/* for calculating the write amplification */
+	atomic64_t app_writes;
+	atomic64_t gc_writes;
+
 	/*
 	 * for stat information.
 	 * one is for the LFS mode, and the other is for the SSR mode.
