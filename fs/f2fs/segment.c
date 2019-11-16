@@ -3270,11 +3270,12 @@ static void do_write_page(struct f2fs_summary *sum, struct f2fs_io_info *fio)
 	}
 
 	if (is_gc_page(fio->page)) {
+		/*
 		if(fio->io_type == FS_DATA_IO)
 			write_type = FS_GC_DATA_IO;
 		else
 			write_type = FS_GC_NODE_IO;
-		fio->io_type = write_type;
+		fio->io_type = write_type; */
 		clear_gc_page(fio->page);
 		atomic64_inc(&fio->sbi->gc_writes);
 	} else {
