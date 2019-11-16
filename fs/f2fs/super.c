@@ -3586,6 +3586,9 @@ static struct dentry *f2fs_mount(struct file_system_type *fs_type, int flags,
 
 static void kill_f2fs_super(struct super_block *sb)
 {
+
+	unsigned long long app_writes_now;
+	unsigned long long gc_writes_now;
 	if (sb->s_root) {
 		struct f2fs_sb_info *sbi = F2FS_SB(sb);
 
@@ -3600,6 +3603,10 @@ static void kill_f2fs_super(struct super_block *sb)
 			};
 			f2fs_write_checkpoint(sbi, &cpc);
 		}
+		app_writes_now = atomic64_read(&sbi->app_writes);
+		gc_writes_now = atomic64_read(&sbi->gc_writes);
+		printk(KERN_NOTICE "\n (No separation) application writes: %llu GC writes: %llu \n", app_writes_now, gc_writes_now);
+		printk(KERN_INFO "\n");
 
 		if (is_sbi_flag_set(sbi, SBI_IS_RECOVERED) && f2fs_readonly(sb))
 			sb->s_flags &= ~SB_RDONLY;
