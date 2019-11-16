@@ -105,11 +105,16 @@ do_gc:
 		stat_inc_bggc_count(sbi);
 
 		/* if return value is not zero, no victim was selected */
-		if (f2fs_gc(sbi, test_opt(sbi, FORCE_FG_GC), true, NULL_SEGNO))
+		if (f2fs_gc(sbi, test_opt(sbi, FORCE_FG_GC), true, NULL_SEGNO)) {
 			wait_ms = gc_th->no_gc_sleep_time;
+			printk(KERN_INFO "\n no more gc!");
+		}
 		else {
 			if(test_opt(sbi, FORCE_FG_GC))
 				goto check_idle;
+			/* hack to do GC continuously
+			goto do_gc;
+			*/
 		}
 
 		trace_f2fs_background_gc(sbi->sb, wait_ms,
