@@ -2584,6 +2584,9 @@ static void new_curseg(struct f2fs_sb_info *sbi, int type, int write_type, bool 
 	segno = __get_next_segno(sbi, type, write_type);
 	get_new_segment(sbi, &segno, new_sec, dir);
 	curseg->next_segno = segno;
+	//if ((curseg->segno + 1) != segno) {
+	atomic64_inc(&sbi->switch_segs);
+	//}
 	reset_curseg(sbi, type, cur_seg_type, 1);
 	curseg->alloc_type = LFS;
 }
@@ -3252,8 +3255,8 @@ static void do_write_page(struct f2fs_summary *sum, struct f2fs_io_info *fio)
 	int type = __get_segment_type(fio);
 	bool keep_order = (test_opt(fio->sbi, LFS) && type == CURSEG_COLD_DATA);
 	int write_type = 0;
-	long long gc_writes_now = 0;
-	long long app_writes_now = 0;
+	unsigned long long gc_writes_now = 0;
+	unsigned long long app_writes_now = 0;
 
 	if (keep_order)
 		down_read(&fio->sbi->io_order_lock);
@@ -3263,7 +3266,8 @@ static void do_write_page(struct f2fs_summary *sum, struct f2fs_io_info *fio)
 	app_writes_now = atomic64_read(&fio->sbi->app_writes);
 
 	if((gc_writes_now == LLONG_MAX-1) || (app_writes_now == LLONG_MAX-1)) {
-		printk(KERN_NOTICE "\n application writes: %ll, GC writes: %ll", app_writes_now, gc_writes_now);
+		printk(KERN_NOTICE "\n application writes: %llu, GC writes: %llu", app_writes_now, gc_writes_now);
+		printk(KERN_INFO "\n");
 		atomic64_set(&fio->sbi->gc_writes, 0);
 		atomic64_set(&fio->sbi->app_writes, 0);
 	}
