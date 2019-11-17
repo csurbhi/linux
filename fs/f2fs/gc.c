@@ -1401,9 +1401,7 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 	return seg_freed;
 }
 
-#define TOTAL_SECS_CLEAN 10
-
-
+#define TOTAL_SECS_CLEAN 1
 
 int f2fs_gc(struct f2fs_sb_info *sbi, bool sync,
 			bool background, unsigned int segno)
