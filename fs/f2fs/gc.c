@@ -312,6 +312,13 @@ static unsigned int count_bits(const unsigned long *addr,
 	return sum;
 }
 
+static int get_segment_type(struct f2fs_sb_info *sbi, int segno)
+{
+	unsigned char type = IS_DATASEG(get_seg_entry(sbi, segno)->type) ?
+                                                CURSEG_COLD_DATA: CURSEG_COLD_NODE;
+	return type;
+}
+
 /*
  * This function is called from two paths.
  * One is garbage collection and the other is SSR segment selection.
@@ -329,6 +336,7 @@ static int get_victim_by_default(struct f2fs_sb_info *sbi,
 	unsigned int secno, last_victim;
 	unsigned int last_segment = MAIN_SEGS(sbi);
 	unsigned int nsearched = 0;
+	int found_type = NO_CHECK_TYPE;
 
 	mutex_lock(&dirty_i->seglist_lock);
 
@@ -402,6 +410,21 @@ static int get_victim_by_default(struct f2fs_sb_info *sbi,
 			nsearched++;
 		}
 
+		found_type = get_segment_type(sbi, segno);
+		/* requested type can be COLD_DATA or COLD_NODE or NO_CHECK_TYPE */
+		if (type!= NO_CHECK_TYPE) {
+			if (type <= CURSEG_COLD_DATA) {
+				/* requesting data segment */
+				if (found_type > CURSEG_COLD_DATA)
+					continue;
+			} else {
+				/* requesting node segment */
+				if (found_type < CURSEG_COLD_DATA)
+					continue;
+				
+			}
+		}
+ 
 		secno = GET_SEC_FROM_SEG(sbi, segno);
 		//printk(KERN_INFO "\n secno: %d", secno);
 		//printk(KERN_INFO "\n nsearched: %d", nsearched);
@@ -1226,14 +1249,14 @@ next_step:
 }
 
 static int __get_victim(struct f2fs_sb_info *sbi, unsigned int *victim,
-			int gc_type)
+			int gc_type, int type)
 {
 	struct sit_info *sit_i = SIT_I(sbi);
 	int ret;
 
 	down_write(&sit_i->sentry_lock);
 	ret = DIRTY_I(sbi)->v_ops->get_victim(sbi, victim, gc_type,
-					      NO_CHECK_TYPE, LFS);
+					      type, LFS);
 	up_write(&sit_i->sentry_lock);
 	return ret;
 }
@@ -1378,6 +1401,10 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 	return seg_freed;
 }
 
+#define TOTAL_SECS_CLEAN 10
+
+
+
 int f2fs_gc(struct f2fs_sb_info *sbi, bool sync,
 			bool background, unsigned int segno)
 {
@@ -1396,6 +1423,7 @@ int f2fs_gc(struct f2fs_sb_info *sbi, bool sync,
 	unsigned int skipped_round = 0, round = 0;
 	unsigned int nr_sec_clean = 0;
 	struct gc_seg_list *new_seg;
+	int type = NO_CHECK_TYPE;
 
 	trace_f2fs_gc_begin(sbi->sb, sync, background,
 				get_pages(sbi, F2FS_DIRTY_NODES),
@@ -1450,7 +1478,7 @@ gc_more:
 	// printk(KERN_INFO "\n About to find victim");
 seg_more:
 	segno = NULL_SEGNO;
-	if (!__get_victim(sbi, &segno, gc_type)) {
+	if (!__get_victim(sbi, &segno, gc_type, type)) {
 		// printk(KERN_NOTICE "\n No more gc victim found!");
 		if (!nr_sec_clean) {
 			ret = -ENODATA;
@@ -1472,7 +1500,10 @@ seg_more:
 	list_add_tail(&new_seg->list, &seglist.list);
 
 	nr_sec_clean++;
-	if (nr_sec_clean < 1) {
+	if (nr_sec_clean < TOTAL_SECS_CLEAN) {
+		if (type == NO_CHECK_TYPE) {
+			type = get_segment_type(sbi, segno);
+		}
 		goto seg_more;
 	}
 
