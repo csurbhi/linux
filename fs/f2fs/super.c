@@ -3495,6 +3495,7 @@ reset_checkpoint:
 
 	atomic64_set(&sbi->gc_writes, 0);
 	atomic64_set(&sbi->app_writes, 0);
+	atomic64_set(&sbi->switch_segs, 0);
 
 	f2fs_join_shrinker(sbi);
 
@@ -3606,6 +3607,7 @@ static void kill_f2fs_super(struct super_block *sb)
 		app_writes_now = atomic64_read(&sbi->app_writes);
 		gc_writes_now = atomic64_read(&sbi->gc_writes);
 		printk(KERN_NOTICE "\n (No separation) application writes: %llu GC writes: %llu \n", app_writes_now, gc_writes_now);
+		printk(KERN_NOTICE "\n (No separation) switch segment count: %llu \n", atomic64_read(&sbi->switch_segs));
 		printk(KERN_INFO "\n");
 
 		if (is_sbi_flag_set(sbi, SBI_IS_RECOVERED) && f2fs_readonly(sb))

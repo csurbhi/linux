@@ -1312,6 +1312,7 @@ struct f2fs_sb_info {
 	/* for calculating the write amplification */
 	atomic64_t app_writes;
 	atomic64_t gc_writes;
+	atomic64_t switch_segs;
 
 	/*
 	 * for stat information.
