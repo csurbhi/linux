@@ -1378,6 +1378,8 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 	return seg_freed;
 }
 
+#define NR_SEC_CLEAN 1
+
 int f2fs_gc(struct f2fs_sb_info *sbi, bool sync,
 			bool background, unsigned int segno)
 {
@@ -1472,7 +1474,7 @@ seg_more:
 	list_add_tail(&new_seg->list, &seglist.list);
 
 	nr_sec_clean++;
-	if (nr_sec_clean < 1) {
+	if (nr_sec_clean < NR_SEC_CLEAN) {
 		goto seg_more;
 	}
 
