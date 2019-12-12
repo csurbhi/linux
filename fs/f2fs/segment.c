@@ -2584,9 +2584,13 @@ static void new_curseg(struct f2fs_sb_info *sbi, int type, int write_type, bool 
 	segno = __get_next_segno(sbi, type, write_type);
 	get_new_segment(sbi, &segno, new_sec, dir);
 	curseg->next_segno = segno;
-	if ((curseg->segno + 1) != segno) {
-		atomic64_inc(&sbi->switch_segs);
+	if (atomic64_read(&sbi->switch_segs == LLONG_MAX-1)) {
+		printk(KERN_ERR "\n switch_segs: %llu", atomic64_read(&sbi->switch_segs));
+		atomic64_set(&sbi->switch_segs, 0);
 	}
+	//if ((curseg->segno + 1) != segno) {
+	atomic64_inc(&sbi->switch_segs);
+	//}
 	reset_curseg(sbi, type, cur_seg_type, 1);
 	curseg->alloc_type = LFS;
 }
