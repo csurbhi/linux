@@ -29,6 +29,7 @@ static int gc_thread_func(void *data)
 	struct f2fs_gc_kthread *gc_th = sbi->gc_thread;
 	wait_queue_head_t *wq = &sbi->gc_thread->gc_wait_queue_head;
 	unsigned int wait_ms;
+	int gc_done = 0;
 
 	wait_ms = gc_th->min_sleep_time;
 
@@ -94,6 +95,8 @@ check_idle:
 			increase_sleep_time(gc_th, &wait_ms);
 			mutex_unlock(&sbi->gc_mutex);
 			stat_io_skip_bggc_count(sbi);
+			if(gc_done)
+				printk(KERN_INFO "\n system is not I/O idle");
 			goto next;
 		}
 
@@ -103,7 +106,6 @@ check_idle:
 			increase_sleep_time(gc_th, &wait_ms);
 do_gc:
 		stat_inc_bggc_count(sbi);
-
 		/* if return value is not zero, no victim was selected */
 		if (f2fs_gc(sbi, test_opt(sbi, FORCE_FG_GC), true, NULL_SEGNO)) {
 			wait_ms = gc_th->no_gc_sleep_time;
@@ -115,14 +117,17 @@ do_gc:
 			/* hack to do GC continuously
 			goto do_gc;
 			*/
+			gc_done = 1;
+			goto check_idle;
 		}
 
 		trace_f2fs_background_gc(sbi->sb, wait_ms,
 				prefree_segments(sbi), free_segments(sbi));
 
 		/* balancing f2fs's metadata periodically */
-		f2fs_balance_fs_bg(sbi);
 next:
+		if(gc_done)
+			f2fs_balance_fs_bg(sbi);
 		sb_end_write(sbi->sb);
 
 	} while (!kthread_should_stop());
