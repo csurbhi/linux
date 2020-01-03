@@ -284,6 +284,11 @@ static unsigned int get_cb_cost(struct f2fs_sb_info *sbi, unsigned int segno)
 		age = 100 - div64_u64(100 * (mtime - sit_i->min_mtime),
 				sit_i->max_mtime - sit_i->min_mtime);
 
+	/* we are converting this to a simple age heuristic for linear
+	 * cleaning
+	 */
+	u = 0;
+
 	return UINT_MAX - ((100 * (100 - u) * age) / (100 + u));
 }
 
