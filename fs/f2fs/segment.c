@@ -2584,6 +2584,8 @@ static void new_curseg(struct f2fs_sb_info *sbi, int type, int write_type, bool 
 	segno = __get_next_segno(sbi, type, write_type);
 	get_new_segment(sbi, &segno, new_sec, dir);
 	curseg->next_segno = segno;
+	if(((curseg->segno + 1) % 128) == 0)
+		printk(KERN_INFO "\n Allocated a new section. seg: %lu, type: %s", segno, (type <= CURSEG_COLD_DATA)? "data" : "meta");
 	if ((curseg->segno + 1) != segno) {
 		atomic64_inc(&sbi->switch_segs);
 	}

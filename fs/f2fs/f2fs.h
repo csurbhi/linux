@@ -253,6 +253,8 @@ struct f2fs_gc_inode {
 };
 
 struct inode_entry {
+	block_t start_addr;	
+	nid_t inum;
 	struct list_head list;	/* list head */
 	struct f2fs_gc_inode gc_inode;
 };
