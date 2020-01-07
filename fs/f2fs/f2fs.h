@@ -244,6 +244,7 @@ struct offset_entry{
 	unsigned int ofs_in_seg;
 	struct f2fs_summary *sum;
         struct list_head list;
+	block_t file_blk_nr;
 };
 
 struct f2fs_gc_inode {
@@ -252,6 +253,8 @@ struct f2fs_gc_inode {
 };
 
 struct inode_entry {
+	block_t start_addr;	
+	nid_t inum;
 	struct list_head list;	/* list head */
 	struct f2fs_gc_inode gc_inode;
 };
@@ -875,10 +878,12 @@ static inline void set_new_dnode(struct dnode_of_data *dn, struct inode *inode,
 /*
  * For SIT manager
  *
- * By default, there are 6 active log areas across the whole main area.
+ * By default, there are 12 active log areas across the whole main area.
  * When considering hot and cold data separation to reduce cleaning overhead,
  * we split 3 for data logs and 3 for node logs as hot, warm, and cold types,
- * respectively.
+ * respectively that accept User I/O. Similarly there are 3 for node logs and
+ * 3 for data logs as hot, warm and cold types that accept GC I/O that arises
+ * through cleaning the logs.
  * In the current design, you should not change the numbers intentionally.
  * Instead, as a mount option such as active_logs=x, you can use 2, 4, and 6
  * logs individually according to the underlying devices. (default: 6)
@@ -887,6 +892,8 @@ static inline void set_new_dnode(struct dnode_of_data *dn, struct inode *inode,
  */
 #define	NR_CURSEG_DATA_TYPE	(3)
 #define NR_CURSEG_NODE_TYPE	(3)
+#define NR_CUR_GC_NODE_TYPE 	(3)
+#define NR_CUR_GC_DATA_TYPE	(3)
 #define NR_CURSEG_TYPE	(NR_CURSEG_DATA_TYPE + NR_CURSEG_NODE_TYPE)
 
 enum {
@@ -920,8 +927,10 @@ struct f2fs_sm_info {
 	struct free_segmap_info *free_info;	/* free segment information */
 	struct dirty_seglist_info *dirty_info;	/* dirty segment information */
 	struct curseg_info *curseg_array;	/* active segment information */
+	struct curseg_info *cur_gc_seg_array;	/* active gc segment information */
 
 	struct rw_semaphore curseg_lock;	/* for preventing curseg change */
+	struct rw_semaphore cur_gc_seg_lock;	/* for preventing cur_gc_seg change */
 
 	block_t seg0_blkaddr;		/* block address of 0'th segment */
 	block_t main_blkaddr;		/* start block address of main area */
@@ -1049,6 +1058,11 @@ enum iostat_type {
 	FS_CP_META_IO,			/* meta IOs from checkpoint */
 	FS_DISCARD,			/* discard */
 	NR_IO_TYPE,
+};
+
+enum cur_section_type {
+	FS_IO,				/* For user I/O */
+	GC_IO,				/* For GC I/O */
 };
 
 struct f2fs_io_info {
@@ -1296,6 +1310,11 @@ struct f2fs_sb_info {
 	unsigned int max_victim_search;
 	/* migration granularity of garbage collection, unit: segment */
 	unsigned int migration_granularity;
+
+	/* for calculating the write amplification */
+	atomic64_t app_writes;
+	atomic64_t gc_writes;
+	atomic64_t switch_segs;
 
 	/*
 	 * for stat information.
@@ -3282,6 +3301,7 @@ struct f2fs_stat_info {
 	int curseg[NR_CURSEG_TYPE];
 	int cursec[NR_CURSEG_TYPE];
 	int curzone[NR_CURSEG_TYPE];
+
 
 	unsigned int meta_count[META_MAX];
 	unsigned int segment_count[2];
