@@ -1087,8 +1087,10 @@ static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 	int submitted = 0;
 	unsigned int segno;
 	int old_gc_type = BG_GC;
-	int count = 0;
+	int count = 0, iocount=0;
+	struct blk_plug plug;
 
+	iocount = 0;
 	list_for_each_entry_safe(ie, next_ie, &gc_list->ilist, list) {
 		inode = ie->gc_inode.inode;
 		if(unlikely(!inode)) {
@@ -1132,6 +1134,11 @@ static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 			ofs_in_seg = entry->ofs_in_seg;
 			sum = entry->sum;
 			start_addr = ie->start_addr;
+			if (iocount == 0) {
+				blk_start_plug(&plug);
+			}
+			iocount++;
+
 			/* Get an inode by ino with checking validity */
 			/*
 			if (!is_alive(sbi, sum, &dni, start_addr + ofs_in_seg, &nofs))
@@ -1146,7 +1153,7 @@ static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 				gc_type = FG_GC;
 			}
 			*/
-			//gc_type = FG_GC;	
+			gc_type = FG_GC;	
 			if (f2fs_post_read_required(inode)) 
 				err = move_data_block(inode, start_bidx,
 							gc_type, segno, ofs_in_seg);
@@ -1154,6 +1161,14 @@ static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 				err = move_data_page(inode, start_bidx, gc_type,
 								segno, ofs_in_seg);
 			stat_inc_data_blk_count(sbi, 1, gc_type);
+			if (iocount == 1024) {
+				if (gc_type == FG_GC) {
+					f2fs_submit_merged_write(sbi, DATA);
+				}
+				blk_finish_plug(&plug);
+				iocount = 0;
+			}
+
 		}
 		if (locked) {
 			up_write(&fi->i_gc_rwsem[WRITE]);
@@ -1357,8 +1372,6 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 
 		printk(KERN_INFO "\n 2. cleaning: %d segno ", start_segno);
 
-		blk_start_plug(&plug);
-
 		for (segno = start_segno; segno < end_segno; segno++) {
 
 			/* find segment summary of victim */
@@ -1427,12 +1440,6 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 		gc_move_inodes_pages(sbi, gc_list, gc_type);
 		submitted = 1;
 	}
-
-	if (submitted)
-		f2fs_submit_merged_write(sbi,
-				(type == SUM_TYPE_NODE) ? NODE : DATA);
-
-	blk_finish_plug(&plug);
 
 	stat_inc_call_count(sbi->stat_info);
 
