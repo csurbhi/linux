@@ -2,7 +2,7 @@
 VERSION = 5
 PATCHLEVEL = 2
 SUBLEVEL = 0
-EXTRAVERSION = 4
+EXTRAVERSION = 7
 NAME = Bobtail Squid - multi seg clean and defrag + check idle time
 
 # *DOCUMENTATION*
