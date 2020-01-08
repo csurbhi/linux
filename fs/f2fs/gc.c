@@ -21,6 +21,8 @@
 #include "gc.h"
 #include <trace/events/f2fs.h>
 
+#define TOTAL_SECS_CLEAN 4
+
 struct kmem_cache * gc_seg_node_cache;
 
 static int gc_thread_func(void *data)
@@ -1073,6 +1075,8 @@ int cmp_blk_nrs(void *priv, struct list_head *a, struct list_head *b)
 	return (entry_a->file_blk_nr - entry_b->file_blk_nr);
 }
 
+#define NRWRITES 65536 /* one section */
+
 static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 				struct gc_inode_list *gc_list, int gc_type)
 {
@@ -1089,7 +1093,9 @@ static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 	int old_gc_type = BG_GC;
 	int count = 0, iocount=0;
 	struct blk_plug plug;
+	int phase = 0;
 
+redo:
 	iocount = 0;
 	list_for_each_entry_safe(ie, next_ie, &gc_list->ilist, list) {
 		inode = ie->gc_inode.inode;
@@ -1130,7 +1136,7 @@ static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 				}
 			}
 
-			if (iocount == 0) {
+			if (!locked || (iocount == 0)) {
 				if (S_ISREG(inode->i_mode)) {
 					if (!down_write_trylock(&fi->i_gc_rwsem[READ]))
 						break;
@@ -1145,9 +1151,12 @@ static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 					/* wait for all inflight aio data */
 					inode_dio_wait(inode);
 				}
+			}
 
+			if (iocount == 0) {
 				blk_start_plug(&plug);
 			}
+
 			iocount++;
 
 			start_bidx = f2fs_start_bidx_of_node(nofs, inode)
@@ -1158,7 +1167,7 @@ static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 				gc_type = FG_GC;
 			}
 			*/
-			//gc_type = FG_GC;	
+			gc_type = FG_GC;	
 			if (f2fs_post_read_required(inode)) 
 				err = move_data_block(inode, start_bidx,
 							gc_type, segno, ofs_in_seg);
@@ -1166,7 +1175,8 @@ static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 				err = move_data_page(inode, start_bidx, gc_type,
 								segno, ofs_in_seg);
 			stat_inc_data_blk_count(sbi, 1, gc_type);
-			if (iocount == 512) {
+			/* For some reason the loop isnt working, hence we repeat */
+			if (iocount == NRWRITES) {
 				if (gc_type == FG_GC) {
 					f2fs_submit_merged_write(sbi, DATA);
 				}
@@ -1175,12 +1185,44 @@ static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 				if (locked) {
 					up_write(&fi->i_gc_rwsem[WRITE]);
 					up_write(&fi->i_gc_rwsem[READ]);
+					locked = false;
 				}
 			}
-
+			/*
+			 * This is done in put_gc_inode() called from f2fs_gc()
+			 */
+			if (!err) {
+				list_del(&entry->list);
+	                	kmem_cache_free(f2fs_offset_entry_slab, entry);
+			}
 		}
-
+		if (iocount) {
+			/* locked can be false when not a regular file
+			 * as well as if already unlocked - but here
+			 * iocount should be zero.
+			 *
+			 * Thus this is a check that if iocount exists
+			 * do we need to unlock i.e is this a regular
+			 * file. We no longer need this lock as we move
+			 * to the next inode.
+			 *
+			 * The iocount is not NRWRITE - so we do not flush
+			 * the iowrites yet.
+			 */
+			if (locked) {
+				up_write(&fi->i_gc_rwsem[WRITE]);
+				up_write(&fi->i_gc_rwsem[READ]);
+			}
+		}
 		gc_type = old_gc_type;
+	}
+	if (iocount) {
+		blk_finish_plug(&plug);
+	}
+	phase = phase + 1;
+	if (phase == TOTAL_SECS_CLEAN) {
+		printk(KERN_ERR "\n Cleaned % section", phase);
+		goto redo;
 	}
 	return submitted;
 }
@@ -1204,7 +1246,7 @@ static int gc_data_segment(struct f2fs_sb_info *sbi, struct f2fs_summary *sum,
 	int count = 0;
 
 	start_addr = START_BLOCK(sbi, segno);
-	printk(KERN_INFO "\n 3. cleaning: %u segno ", segno);
+	//printk(KERN_INFO "\n 3. cleaning: %u segno ", segno);
 
 next_step:
 	entry = sum;
@@ -1376,7 +1418,7 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 			continue;
 		}
 
-		printk(KERN_INFO "\n 2. cleaning: %d segno ", start_segno);
+		//printk(KERN_INFO "\n 2. cleaning: %d segno ", start_segno);
 		if (type == NODE) {
 			blk_start_plug(&plug);
 		}
@@ -1460,8 +1502,6 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 
 	return seg_freed;
 }
-
-#define TOTAL_SECS_CLEAN 4
 
 int f2fs_gc(struct f2fs_sb_info *sbi, bool sync,
 			bool background, unsigned int segno)
