@@ -995,6 +995,7 @@ static int move_data_page(struct inode *inode, block_t bidx, int gc_type,
 		return PTR_ERR(page);
 
 	if (!check_valid_map(F2FS_I_SB(inode), segno, off)) {
+		printk(KERN_ERR "\n Invalid map, segno: %d, off: %d", segno, off);
 		err = -ENOENT;
 		goto out;
 	}
@@ -1069,13 +1070,23 @@ out:
 /* compare the file_blk_nr in the entry */
 int cmp_blk_nrs(void *priv, struct list_head *a, struct list_head *b)
 {
-	struct offset_entry * entry_a = list_entry(a, struct offset_entry, list);
-	struct offset_entry * entry_b = list_entry(a, struct offset_entry, list);
+	struct offset_entry * entry_a = container_of(a, struct offset_entry, list);
+	struct offset_entry * entry_b = container_of(b, struct offset_entry, list);
 
-	return (entry_a->file_blk_nr - entry_b->file_blk_nr);
+	return (entry_a->file_blk_nr > entry_b->file_blk_nr);
 }
 
 #define NRWRITES 65536 /* one section */
+void static delete_entries(struct inode_entry *ie)
+{
+	struct offset_entry *entry, *next_entry;
+
+	list_for_each_entry_safe(entry, next_entry, &ie->gc_inode.off_list.list , list) {
+		list_del(&entry->list);
+		kmem_cache_free(f2fs_offset_entry_slab, entry);
+	}
+}
+
 
 static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 				struct gc_inode_list *gc_list, int gc_type)
@@ -1094,49 +1105,68 @@ static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 	int count = 0, iocount=0;
 	struct blk_plug plug;
 	int phase = 0;
+	bool plugged = false;
+	bool locked = false;
+	block_t file_blk_nr = 0;
 
+	/* TESTING/DEBUGGING */
+	gc_type = FG_GC;
 redo:
 	iocount = 0;
 	list_for_each_entry_safe(ie, next_ie, &gc_list->ilist, list) {
+		int err;
+		block_t start_addr;
+		struct f2fs_inode_info *fi;
+		int dead = false;
+
 		inode = ie->gc_inode.inode;
 		if(unlikely(!inode)) {
 			continue;
 		}
 
-		struct f2fs_inode_info *fi = F2FS_I(inode);
-		bool locked = false;
-		int err;
-		block_t start_addr;
-
-
+		fi = F2FS_I(inode);
 		/* sort the inode list */
 		list_sort(NULL, &ie->gc_inode.off_list.list, cmp_blk_nrs);
 		count = 0;
 		list_for_each_entry_safe(entry, next_entry, &ie->gc_inode.off_list.list , list) {
-			//printk(KERN_INFO "\n inode_nr: %lu, blk_nr: %lu", ie->inum, entry->file_blk_nr);
+			/*
+			if (count < 100)
+				printk(KERN_INFO "\n inode_nr: %lu, blk_nr: %u", ie->inum, entry->file_blk_nr);
+			*/
 			count++;
 		}
 		printk(KERN_ERR "\n inode nr: %u, count: %u", ie->inum, count);
 
-		old_gc_type = gc_type;
-		//gc_type = FG_GC;
-
-		
 		list_for_each_entry_safe(entry, next_entry, &ie->gc_inode.off_list.list , list) {
 			ofs_in_node = entry->ofs_in_node;
 			segno = entry->segno;
 			ofs_in_seg = entry->ofs_in_seg;
 			sum = entry->sum;
 			start_addr = ie->start_addr;
+			file_blk_nr = entry->file_blk_nr;
 
+			/* TODO: All of this information may have changed as the inode
+			 * was unlocked. Sufficient for the RPE, but not in general
+			 */
+	
 			/* Get an inode by ino with checking validity */
+			/*
 			if (!locked) {
 				if (!is_alive(sbi, sum, &dni, start_addr + ofs_in_seg, &nofs)) {
+					printk(KERN_ERR, "\n Inode is dead!");
+					dead = true;
 					break;
 				}
+			}*/
+
+			
+			if (iocount == 0) {
+				printk(KERN_ERR "\n blk_start_plug() called!, inode is alive");
+				blk_start_plug(&plug);
+				plugged = true;
 			}
 
-			if (!locked || (iocount == 0)) {
+			if (!locked) {
 				if (S_ISREG(inode->i_mode)) {
 					if (!down_write_trylock(&fi->i_gc_rwsem[READ]))
 						break;
@@ -1147,81 +1177,70 @@ redo:
 						break;
 					}
 					locked = true;
+					printk(KERN_ERR "\n Inode is locked!");
 
 					/* wait for all inflight aio data */
 					inode_dio_wait(inode);
 				}
 			}
 
-			if (iocount == 0) {
-				blk_start_plug(&plug);
-			}
-
-			iocount++;
-
-			start_bidx = f2fs_start_bidx_of_node(nofs, inode)
-								+ ofs_in_node;
-
-			/*
-			if (is_idle(sbi, GC_TIME)) {
-				gc_type = FG_GC;
-			}
-			*/
-			gc_type = FG_GC;	
+			err = 0;
 			if (f2fs_post_read_required(inode)) 
-				err = move_data_block(inode, start_bidx,
+				err = move_data_block(inode, file_blk_nr,
 							gc_type, segno, ofs_in_seg);
 			else 
-				err = move_data_page(inode, start_bidx, gc_type,
+				err = move_data_page(inode, file_blk_nr, gc_type,
 								segno, ofs_in_seg);
 			stat_inc_data_blk_count(sbi, 1, gc_type);
-			/* For some reason the loop isnt working, hence we repeat */
-			if (iocount == NRWRITES) {
-				if (gc_type == FG_GC) {
-					f2fs_submit_merged_write(sbi, DATA);
-				}
-				blk_finish_plug(&plug);
-				iocount = 0;
-				if (locked) {
-					up_write(&fi->i_gc_rwsem[WRITE]);
-					up_write(&fi->i_gc_rwsem[READ]);
-					locked = false;
-				}
-			}
-			/*
-			 * This is done in put_gc_inode() called from f2fs_gc()
-			 */
 			if (!err) {
+				iocount++;
+				/* For some reason the loop isnt working, hence we repeat */
+				if (iocount == NRWRITES) {
+					printk(KERN_ERR "\n %d writes submitted! ", NRWRITES);
+					iocount = 0;
+					if (locked) {
+						up_write(&fi->i_gc_rwsem[WRITE]);
+						up_write(&fi->i_gc_rwsem[READ]);
+						locked = false;
+					}
+					if (gc_type == FG_GC) {
+						printk(KERN_ERR "\n 1. calling f2fs_submit_merged_writes()");
+						f2fs_submit_merged_write(sbi, DATA);
+					}
+					blk_finish_plug(&plug);
+					plugged = false;
+
+				}
+				/*
+				 * This is done in put_gc_inode() called from f2fs_gc()
+				 */
 				list_del(&entry->list);
 	                	kmem_cache_free(f2fs_offset_entry_slab, entry);
+			} else {
+				printk(KERN_ERR "\n err returned: %d \n", err);
 			}
 		}
-		if (iocount) {
-			/* locked can be false when not a regular file
-			 * as well as if already unlocked - but here
-			 * iocount should be zero.
-			 *
-			 * Thus this is a check that if iocount exists
-			 * do we need to unlock i.e is this a regular
-			 * file. We no longer need this lock as we move
-			 * to the next inode.
-			 *
-			 * The iocount is not NRWRITE - so we do not flush
-			 * the iowrites yet.
-			 */
-			if (locked) {
-				up_write(&fi->i_gc_rwsem[WRITE]);
-				up_write(&fi->i_gc_rwsem[READ]);
-			}
+		if (locked) {
+			up_write(&fi->i_gc_rwsem[WRITE]);
+			up_write(&fi->i_gc_rwsem[READ]);
+			locked = false;
 		}
-		gc_type = old_gc_type;
+		if(unlikely(dead)) {
+			printk(KERN_ERR "\n inode is dead, so deleting all entries! \n");
+			delete_entries(ie);
+		}
 	}
-	if (iocount) {
+	if (plugged) {
+		if (gc_type == FG_GC) {
+			printk(KERN_ERR "\n 2. calling f2fs_submit_merged_writes()");
+			f2fs_submit_merged_write(sbi, DATA);
+		}
 		blk_finish_plug(&plug);
 	}
 	phase = phase + 1;
+	printk(KERN_ERR "\n iocount: %u", iocount);
 	if (phase == TOTAL_SECS_CLEAN) {
-		printk(KERN_ERR "\n Cleaned % section", phase);
+		printk(KERN_ERR "\n Cleaned %d section", phase);
 		goto redo;
 	}
 	return submitted;
