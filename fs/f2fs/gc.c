@@ -21,7 +21,7 @@
 #include "gc.h"
 #include <trace/events/f2fs.h>
 
-#define TOTAL_SECS_CLEAN 4
+#define TOTAL_SECS_CLEAN 1
 
 struct kmem_cache * gc_seg_node_cache;
 
@@ -1147,6 +1147,12 @@ redo:
 
 			/* TODO: All of this information may have changed as the inode
 			 * was unlocked. Sufficient for the RPE, but not in general
+			 *
+			 * TODO: this is related something with the start_addr
+			 * and call: 
+			 * start_bidx = f2fs_start_bidx_of_node(nofs, inode) +
+                                                                ofs_in_node;
+			 * start_addr 
 			 */
 	
 			/* Get an inode by ino with checking validity */
@@ -1625,7 +1631,7 @@ seg_more:
 	}
 
 do_gc:
-	//printk(KERN_NOTICE "\n Cleaning %d zones", nr_sec_clean);
+	printk(KERN_NOTICE "\n ***Cleaning %d zones", nr_sec_clean);
 	seg_freed = do_garbage_collect(sbi, &seglist, &gc_list, gc_type);
 	list_for_each_entry_safe(cur_seg, next_seg, &seglist.list, list) {
 		list_del(&cur_seg->list);
