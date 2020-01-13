@@ -254,7 +254,7 @@ struct f2fs_gc_inode {
 
 struct inode_entry {
 	struct list_head list;	/* list head */
-	struct f2fs_gc_inode gc_inode;
+	struct inode *inode;    /* vfs inode pointer */
 };
 
 struct fsync_node_entry {
