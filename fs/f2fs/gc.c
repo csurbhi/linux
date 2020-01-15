@@ -917,7 +917,7 @@ static int move_data_page(struct inode *inode, block_t bidx, int gc_type,
 		}
 		set_page_dirty(page);
 		set_cold_data(page);
-		set_gc_page(page);
+		//set_gc_page(page);
 	} else {
 		struct f2fs_io_info fio = {
 			.sbi = F2FS_I_SB(inode),
@@ -944,7 +944,7 @@ retry:
 		}
 
 		set_cold_data(page);
-		set_gc_page(page);
+		//set_gc_page(page);
 
 		err = f2fs_do_write_data_page(&fio);
 		if (err) {

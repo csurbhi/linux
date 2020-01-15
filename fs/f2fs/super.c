@@ -3672,13 +3672,9 @@ static int __init init_f2fs_fs(void)
 	err = f2fs_create_extent_cache();
 	if (err)
 		goto free_checkpoint_caches;
-	gc_seg_node_cache = f2fs_kmem_cache_create("gc_seg_node",
-			sizeof(struct gc_seg_list));
-	if(!gc_seg_node_cache)
-		goto free_extent_cache;
 	err = f2fs_init_sysfs();
 	if (err)
-		goto free_gc_seg_node_cache;
+		goto free_extent_cache;
 	err = register_shrinker(&f2fs_shrinker_info);
 	if (err)
 		goto free_sysfs;
@@ -3699,8 +3695,6 @@ free_sysfs:
 	f2fs_exit_sysfs();
 free_extent_cache:
 	f2fs_destroy_extent_cache();
-free_gc_seg_node_cache:
-	kmem_cache_destroy(gc_seg_node_cache);
 free_checkpoint_caches:
 	f2fs_destroy_checkpoint_caches();
 free_segment_manager_caches:
@@ -3720,7 +3714,6 @@ static void __exit exit_f2fs_fs(void)
 	unregister_filesystem(&f2fs_fs_type);
 	unregister_shrinker(&f2fs_shrinker_info);
 	f2fs_exit_sysfs();
-	kmem_cache_destroy(gc_seg_node_cache);
 	f2fs_destroy_extent_cache();
 	f2fs_destroy_checkpoint_caches();
 	f2fs_destroy_segment_manager_caches();
