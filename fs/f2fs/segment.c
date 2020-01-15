@@ -2424,6 +2424,8 @@ static void get_new_segment(struct f2fs_sb_info *sbi,
 	int go_left = 0;
 	int i;
 
+	printk(KERN_ERR "\n %s %d %d ", __FILE__, __LINE__, __FUNCTION__ );
+
 	spin_lock(&free_i->segmap_lock);
 
 	if (!new_sec && ((*newseg + 1) % sbi->segs_per_sec)) {
@@ -2499,6 +2501,7 @@ got_it:
 	__set_inuse(sbi, segno);
 	*newseg = segno;
 	spin_unlock(&free_i->segmap_lock);
+	printk(KERN_ERR "\n %s %d %d ", __FILE__, __LINE__, __FUNCTION__ );
 }
 
 static void reset_curseg(struct f2fs_sb_info *sbi, int type, int cur_seg_type, int modified)
@@ -2564,9 +2567,12 @@ static void new_curseg(struct f2fs_sb_info *sbi, int type, int write_type, bool 
 	int dir = ALLOC_LEFT;
 	int cur_seg_type;
 
+	printk(KERN_ERR "\n Inside new_curseg type: %d write_type: %d", type, write_type);
+
 	if ((write_type == FS_GC_DATA_IO) || (write_type == FS_GC_NODE_IO)) {
 		curseg = CUR_GC_SEG_I(sbi, type);
 		cur_seg_type = GC_IO;
+		dump_stack();
 	} else {
 		curseg = CURSEG_I(sbi, type);
 		cur_seg_type = FS_IO;
@@ -2584,6 +2590,8 @@ static void new_curseg(struct f2fs_sb_info *sbi, int type, int write_type, bool 
 	segno = __get_next_segno(sbi, type, write_type);
 	get_new_segment(sbi, &segno, new_sec, dir);
 	curseg->next_segno = segno;
+	printk(KERN_ERR "\n Inside new_curseg, new segno: %d", segno);
+	/*
 	if (atomic64_read(&sbi->switch_segs == LLONG_MAX-1)) {
 		printk(KERN_ERR "\n switch_segs: %llu", atomic64_read(&sbi->switch_segs));
 		atomic64_set(&sbi->switch_segs, 0);
@@ -2591,6 +2599,7 @@ static void new_curseg(struct f2fs_sb_info *sbi, int type, int write_type, bool 
 	//if ((curseg->segno + 1) != segno) {
 	atomic64_inc(&sbi->switch_segs);
 	//}
+	*/
 	reset_curseg(sbi, type, cur_seg_type, 1);
 	curseg->alloc_type = LFS;
 }
@@ -2731,10 +2740,14 @@ static void allocate_segment_by_default(struct f2fs_sb_info *sbi,
 {
 	struct curseg_info *curseg;
 
-	if ((write_type == FS_GC_DATA_IO) || (write_type == FS_GC_NODE_IO))
+	if ((write_type == FS_GC_DATA_IO) || (write_type == FS_GC_NODE_IO)) {
 		curseg = CUR_GC_SEG_I(sbi, type);
-	else 
+		dump_stack();
+	}
+	else {
 		curseg = CURSEG_I(sbi, type);
+		printk(KERN_ERR "\n allocating regular segment");
+	}
 
 	if (force)
 		new_curseg(sbi, type, write_type, true);
@@ -3148,7 +3161,8 @@ void f2fs_allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 	if ((write_type == FS_GC_DATA_IO) || (write_type == FS_GC_NODE_IO)) {
 		down_read(&SM_I(sbi)->cur_gc_seg_lock);
 		curseg = CUR_GC_SEG_I(sbi, type);
-		//printk("\n Allocating a block from the GC segment! write_type: %u type: %u", write_type, type);
+		printk("\n Allocating a block from the GC segment! write_type: %u type: %u", write_type, type);
+		dump_stack();
 	}
 	else {
 		down_read(&SM_I(sbi)->curseg_lock);
@@ -3275,19 +3289,20 @@ static void do_write_page(struct f2fs_summary *sum, struct f2fs_io_info *fio)
 		atomic64_set(&fio->sbi->gc_writes, 0);
 		atomic64_set(&fio->sbi->app_writes, 0);
 	}
+	/*
 
 	if (is_gc_page(fio->page)) {
-		/*
 		if(fio->io_type == FS_DATA_IO)
 			write_type = FS_GC_DATA_IO;
 		else
 			write_type = FS_GC_NODE_IO;
-		fio->io_type = write_type; */
+		fio->io_type = write_type;
 		clear_gc_page(fio->page);
 		atomic64_inc(&fio->sbi->gc_writes);
 	} else {
 		atomic64_inc(&fio->sbi->app_writes);
 	}
+	*/
 	/*
 	if (write_type == FS_DATA_IO)
 		printk(KERN_INFO "\n write_type: %s", "FS_DATA_IO");
