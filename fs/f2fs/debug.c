@@ -125,6 +125,10 @@ static void update_general_status(struct f2fs_sb_info *sbi)
 		si->curseg[i] = curseg->segno;
 		si->cursec[i] = GET_SEC_FROM_SEG(sbi, curseg->segno);
 		si->curzone[i] = GET_ZONE_FROM_SEC(sbi, si->cursec[i]);
+		curseg = CUR_GC_SEG_I(sbi, i);
+		si->curgcseg[i] = curseg->segno;
+		si->curgcsec[i] = GET_SEC_FROM_SEG(sbi, curseg->segno);
+		si->curgczone[i] = GET_ZONE_FROM_SEC(sbi, si->cursec[i]);
 	}
 
 	for (i = META_CP; i < META_MAX; i++)
@@ -325,6 +329,18 @@ static int stat_show(struct seq_file *s, void *v)
 			   si->curseg[CURSEG_HOT_DATA],
 			   si->cursec[CURSEG_HOT_DATA],
 			   si->curzone[CURSEG_HOT_DATA]);
+		seq_printf(s, "  GC - COLD  data: %d, %d, %d\n",
+			   si->curgcseg[CURSEG_COLD_DATA],
+			   si->curgcsec[CURSEG_COLD_DATA],
+			   si->curgczone[CURSEG_COLD_DATA]);
+		seq_printf(s, "  GC - WARM  data: %d, %d, %d\n",
+			   si->curgcseg[CURSEG_WARM_DATA],
+			   si->curgcsec[CURSEG_WARM_DATA],
+			   si->curgczone[CURSEG_WARM_DATA]);
+		seq_printf(s, "  GC - HOT   data: %d, %d, %d\n",
+			   si->curgcseg[CURSEG_HOT_DATA],
+			   si->curgcsec[CURSEG_HOT_DATA],
+			   si->curgczone[CURSEG_HOT_DATA]);
 		seq_printf(s, "  - Dir   dnode: %d, %d, %d\n",
 			   si->curseg[CURSEG_HOT_NODE],
 			   si->cursec[CURSEG_HOT_NODE],
@@ -337,6 +353,19 @@ static int stat_show(struct seq_file *s, void *v)
 			   si->curseg[CURSEG_COLD_NODE],
 			   si->cursec[CURSEG_COLD_NODE],
 			   si->curzone[CURSEG_COLD_NODE]);
+		seq_printf(s, "  GC - Dir   dnode: %d, %d, %d\n",
+			   si->curgcseg[CURSEG_HOT_NODE],
+			   si->curgcsec[CURSEG_HOT_NODE],
+			   si->curgczone[CURSEG_HOT_NODE]);
+		seq_printf(s, "  GC - File   dnode: %d, %d, %d\n",
+			   si->curgcseg[CURSEG_WARM_NODE],
+			   si->curgcsec[CURSEG_WARM_NODE],
+			   si->curgczone[CURSEG_WARM_NODE]);
+		seq_printf(s, "  GC - Indir nodes: %d, %d, %d\n",
+			   si->curgcseg[CURSEG_COLD_NODE],
+			   si->curgcsec[CURSEG_COLD_NODE],
+			   si->curgczone[CURSEG_COLD_NODE]);
+
 		seq_printf(s, "\n  - Valid: %d\n  - Dirty: %d\n",
 			   si->main_area_segs - si->dirty_count -
 			   si->prefree_count - si->free_segs,
