@@ -88,7 +88,7 @@ static int gc_thread_func(void *data)
 		}
 check_idle:
 		if (!is_idle(sbi, GC_TIME)) {
-			increase_sleep_time(gc_th, &wait_ms);
+		//	increase_sleep_time(gc_th, &wait_ms);
 			mutex_unlock(&sbi->gc_mutex);
 			stat_io_skip_bggc_count(sbi);
 			goto next;
@@ -96,14 +96,16 @@ check_idle:
 
 		if (has_enough_invalid_blocks(sbi))
 			decrease_sleep_time(gc_th, &wait_ms);
+		/*
 		else
 			increase_sleep_time(gc_th, &wait_ms);
+		*/
 do_gc:
 		stat_inc_bggc_count(sbi);
 
 		/* if return value is not zero, no victim was selected */
 		if (f2fs_gc(sbi, test_opt(sbi, FORCE_FG_GC), true, NULL_SEGNO)) {
-			wait_ms = gc_th->no_gc_sleep_time;
+			//wait_ms = gc_th->no_gc_sleep_time;
 			printk(KERN_INFO "\n no more gc!");
 		}
 		else {
@@ -1148,6 +1150,8 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 						SUM_TYPE_DATA : SUM_TYPE_NODE;
 	int submitted = 0;
 
+	gc_type = FG_GC;
+
 	if (__is_large_section(sbi))
 		end_segno = rounddown(end_segno, sbi->segs_per_sec);
 
@@ -1305,6 +1309,7 @@ gc_more:
 		ret = -ENODATA;
 		goto stop;
 	}
+	printk(KERN_ERR "\n About to do GC");
 
 	seg_freed = do_garbage_collect(sbi, segno, &gc_list, gc_type);
 	if (gc_type == FG_GC && seg_freed == sbi->segs_per_sec)
