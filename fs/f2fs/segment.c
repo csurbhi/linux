@@ -3269,12 +3269,17 @@ static void do_write_page(struct f2fs_summary *sum, struct f2fs_io_info *fio)
 		atomic64_set(&fio->sbi->gc_writes, 0);
 		atomic64_set(&fio->sbi->app_writes, 0);
 	}
-
+	/* BG GC marks the io_type as FS_DATA_IO whereas FG_GC marks
+	 * it as FS_GC_DATA_IO
+	 * Here we are switching off the separation.
+	 * Hence we select always the regular section instead of the separate
+	 * GC sections
+	 */
 	if (is_gc_page(fio->page)) {
-		if(fio->io_type == FS_DATA_IO)
-			write_type = FS_GC_DATA_IO;
+		if((fio->io_type == FS_GC_DATA_IO) || (fio->io_type == FS_DATA_IO))
+			write_type = FS_DATA_IO;
 		else
-			write_type = FS_GC_NODE_IO;
+			write_type = FS_NODE_IO;
 		clear_gc_page(fio->page);
 		fio->io_type = write_type;
 		atomic64_inc(&fio->sbi->gc_writes);
@@ -3293,7 +3298,6 @@ static void do_write_page(struct f2fs_summary *sum, struct f2fs_io_info *fio)
 	else
 		printk(KERN_INFO "\n write_tyep: %d", write_type);
 	*/
-
 
 reallocate:
 	f2fs_allocate_data_block(fio->sbi, fio->page, fio->old_blkaddr,
