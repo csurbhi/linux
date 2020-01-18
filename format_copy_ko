@@ -1,0 +1,14 @@
+sudo umount /mnt
+sudo rmmod f2fs.ko
+lsmod | grep f2fs
+sudo rm /lib/modules/5.2.07+/kernel/fs/f2fs/f2fs.ko
+ls -lh /lib/modules/5.2.07+/kernel/fs/f2fs/
+#make
+sudo cp fs/f2fs/f2fs.ko /lib/modules/5.2.07+/kernel/fs/f2fs/f2fs.ko
+cd /github/f2fs-tools/mkfs
+./mkfs.f2fs -t1 -a0 -m -f /dev/sdb
+cd /github/defrag-proof
+sudo ./test_case1.sh
+
+
+
