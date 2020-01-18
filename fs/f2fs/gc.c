@@ -86,7 +86,7 @@ static int gc_thread_func(void *data)
 			stat_other_skip_bggc_count(sbi);
 			goto next;
 		}
-
+check_idle:
 		if (!is_idle(sbi, GC_TIME)) {
 			increase_sleep_time(gc_th, &wait_ms);
 			mutex_unlock(&sbi->gc_mutex);
@@ -1255,6 +1255,8 @@ int f2fs_gc(struct f2fs_sb_info *sbi, bool sync,
 	unsigned long long last_skipped = sbi->skipped_atomic_files[FG_GC];
 	unsigned long long first_skipped;
 	unsigned int skipped_round = 0, round = 0;
+	unsigned long long app_writes_now;
+	unsigned long long gc_writes_now;
 
 	trace_f2fs_gc_begin(sbi->sb, sync, background,
 				get_pages(sbi, F2FS_DIRTY_NODES),
@@ -1340,6 +1342,13 @@ gc_more:
 		if (gc_type == FG_GC && !is_sbi_flag_set(sbi, SBI_CP_DISABLED))
 			ret = f2fs_write_checkpoint(sbi, &cpc);
 	}
+	app_writes_now = atomic64_read(&sbi->app_writes);
+	gc_writes_now = atomic64_read(&sbi->gc_writes);
+	printk(KERN_NOTICE "\n GC DONE!");
+	printk(KERN_NOTICE "\n (Modified) application writes: %llu GC writes: %llu \n", app_writes_now, gc_writes_now);
+	printk(KERN_NOTICE "\n (Modified) switch segment count: %llu \n", atomic64_read(&sbi->switch_segs));
+	printk(KERN_INFO "\n");
+
 stop:
 	SIT_I(sbi)->last_victim[ALLOC_NEXT] = 0;
 	SIT_I(sbi)->last_victim[FLUSH_DEVICE] = init_segno;
@@ -1357,6 +1366,7 @@ stop:
 
 	put_gc_inode(&gc_list);
 
+	
 	if (sync && !ret)
 		ret = sec_freed ? 0 : -EAGAIN;
 	return ret;
