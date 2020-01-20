@@ -203,6 +203,8 @@ static void select_policy(struct f2fs_sb_info *sbi, int gc_type,
 		p->ofs_unit = sbi->segs_per_sec;
 	}
 
+	printk(KERN_ERR "\n p->max_search: %d (nr_dirty)", p->max_search);
+
 	/* we need to check every dirty segments in the FG_GC case */
 	if (gc_type != FG_GC &&
 			(sbi->gc_mode != GC_URGENT) &&
@@ -992,7 +994,7 @@ static int gc_data_segment(struct f2fs_sb_info *sbi, struct f2fs_summary *sum,
 	int submitted = 0;
 
 	start_addr = START_BLOCK(sbi, segno);
-
+	gc_type = FG_GC;
 next_step:
 	entry = sum;
 
@@ -1232,6 +1234,7 @@ freed:
 skip:
 		f2fs_put_page(sum_page, 0);
 	}
+	submitted = 1;
 
 	if (submitted)
 		f2fs_submit_merged_write(sbi,
