@@ -3141,13 +3141,12 @@ void f2fs_allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 	struct curseg_info *curseg;
 	enum iostat_type io_type = fio->io_type;
 
+	down_read(&SM_I(sbi)->curseg_lock);
 	if ((write_type == FS_GC_DATA_IO) || (write_type == FS_GC_NODE_IO)) {
-		down_read(&SM_I(sbi)->cur_gc_seg_lock);
 		curseg = CUR_GC_SEG_I(sbi, type);
 		//printk("\n Allocating a block from the GC segment! write_type: %u type: %u", write_type, type);
 	}
 	else {
-		down_read(&SM_I(sbi)->curseg_lock);
 		curseg = CURSEG_I(sbi, type);
 		//printk("\n Allocating a block from the regular segment! write_type: %u type: %u", write_type, type);
 	}
@@ -3221,10 +3220,7 @@ void f2fs_allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 
 	mutex_unlock(&curseg->curseg_mutex);
 
-	if ((write_type == FS_GC_DATA_IO) || (write_type == FS_GC_NODE_IO))
-		up_read(&SM_I(sbi)->cur_gc_seg_lock);
-	else
-		up_read(&SM_I(sbi)->curseg_lock);
+	up_read(&SM_I(sbi)->curseg_lock);
 }
 
 static void update_device_state(struct f2fs_io_info *fio)
@@ -3427,10 +3423,7 @@ void f2fs_do_replace_block(struct f2fs_sb_info *sbi, struct f2fs_summary *sum,
 	se = get_seg_entry(sbi, segno);
 	type = se->type;
 
-	if ((io_type == FS_GC_DATA_IO) || (io_type == FS_GC_NODE_IO))
-		down_write(&SM_I(sbi)->cur_gc_seg_lock);
-	else
-		down_write(&SM_I(sbi)->curseg_lock);
+	down_write(&SM_I(sbi)->curseg_lock);
 
 	if (!recover_curseg) {
 		/* for recovery flow */
@@ -3495,10 +3488,7 @@ void f2fs_do_replace_block(struct f2fs_sb_info *sbi, struct f2fs_summary *sum,
 
 	up_write(&sit_i->sentry_lock);
 	mutex_unlock(&curseg->curseg_mutex);
-	if ((io_type == FS_GC_DATA_IO) || (io_type == FS_GC_NODE_IO))
-		up_write(&SM_I(sbi)->cur_gc_seg_lock);
-	else
-		up_write(&SM_I(sbi)->curseg_lock);
+	up_write(&SM_I(sbi)->curseg_lock);
 }
 
 void f2fs_replace_block(struct f2fs_sb_info *sbi, struct dnode_of_data *dn,

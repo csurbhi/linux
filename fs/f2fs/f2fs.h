@@ -909,7 +909,6 @@ struct f2fs_sm_info {
 	struct curseg_info *cur_gc_seg_array;	/* active gc segment information */
 
 	struct rw_semaphore curseg_lock;	/* for preventing curseg change */
-	struct rw_semaphore cur_gc_seg_lock;	/* for preventing cur_gc_seg change */
 
 	block_t seg0_blkaddr;		/* block address of 0'th segment */
 	block_t main_blkaddr;		/* start block address of main area */
