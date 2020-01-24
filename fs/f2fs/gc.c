@@ -287,9 +287,9 @@ static unsigned int get_cb_cost(struct f2fs_sb_info *sbi, unsigned int segno)
 				sit_i->max_mtime - sit_i->min_mtime);
 
 	/* we are converting this to a simple age heuristic for linear
-	 * cleaning
-	 */
+	 * cleaning. commenting the next line - cost -age heuristic
 	u = 0;
+	 */
 
 	return UINT_MAX - ((100 * (100 - u) * age) / (100 + u));
 }
