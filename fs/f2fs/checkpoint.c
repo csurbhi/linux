@@ -1405,6 +1405,10 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	 * version number is already updated
 	 */
 	ckpt->elapsed_time = cpu_to_le64(get_mtime(sbi, true));
+	printk(KERN_ERR "<Inside do_checkpoint> ckpt->elapsed_time: %llu", ckpt->elapsed_time);
+	printk(KERN_ERR "\n------------------------------\n");
+	dump_stack();
+	printk(KERN_ERR "\n------------------------------\n");
 	ckpt->free_segment_count = cpu_to_le32(free_segments(sbi));
 	for (i = 0; i < NR_CURSEG_NODE_TYPE; i++) {
 		ckpt->cur_node_segno[i] =

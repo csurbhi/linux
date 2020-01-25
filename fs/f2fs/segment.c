@@ -1902,10 +1902,14 @@ static void set_prefree_as_free_segments(struct f2fs_sb_info *sbi)
 {
 	struct dirty_seglist_info *dirty_i = DIRTY_I(sbi);
 	unsigned int segno;
+	struct seg_entry *se;
 
 	mutex_lock(&dirty_i->seglist_lock);
-	for_each_set_bit(segno, dirty_i->dirty_segmap[PRE], MAIN_SEGS(sbi))
+	for_each_set_bit(segno, dirty_i->dirty_segmap[PRE], MAIN_SEGS(sbi)) {
 		__set_test_and_free(sbi, segno);
+		se = get_seg_entry(sbi, segno);
+		printk(KERN_ERR "\n freed segno: %d, retained mtime: %llu", segno, se->mtime);
+	}
 	mutex_unlock(&dirty_i->seglist_lock);
 }
 
@@ -2096,6 +2100,7 @@ static void update_sit_entry(struct f2fs_sb_info *sbi, block_t blkaddr, int del)
 	unsigned int segno, offset;
 	long int new_vblocks;
 	bool exist;
+	struct sit_info * sit_i = SIT_I(sbi);
 #ifdef CONFIG_F2FS_CHECK_FS
 	bool mir_exist;
 #endif
@@ -2110,10 +2115,15 @@ static void update_sit_entry(struct f2fs_sb_info *sbi, block_t blkaddr, int del)
 				(new_vblocks > sbi->blocks_per_seg)));
 
 	se->valid_blocks = new_vblocks;
+	printk(KERN_ERR "\n <update_sit_entry::before> segno: %u mtime: %llu", segno, se->mtime);
 	se->mtime = get_mtime(sbi, false);
+	printk(KERN_ERR "\n <update_sit_entry::after> segno: %u mtime: %llu", segno, se->mtime);
+
 	if (se->mtime > SIT_I(sbi)->max_mtime)
 		SIT_I(sbi)->max_mtime = se->mtime;
 
+	printk(KERN_ERR "\n sit_i:: mounted_time: %llu elapsed_time: %llu min_mtime: %llu, max_mtime: %llu",
+					sit_i->mounted_time, sit_i->elapsed_time, sit_i->min_mtime, sit_i->max_mtime);
 	/* Update valid block bitmap */
 	if (del > 0) {
 		exist = f2fs_test_and_set_bit(offset, se->cur_valid_map);
@@ -2482,6 +2492,7 @@ static void new_curseg(struct f2fs_sb_info *sbi, int type, bool new_sec)
 	struct curseg_info *curseg = CURSEG_I(sbi, type);
 	unsigned int segno = curseg->segno;
 	int dir = ALLOC_LEFT;
+	struct seg_entry *se;
 
 	write_sum_page(sbi, curseg->sum_blk,
 				GET_SUM_BLOCK(sbi, segno));
@@ -2491,11 +2502,15 @@ static void new_curseg(struct f2fs_sb_info *sbi, int type, bool new_sec)
 	if (test_opt(sbi, NOHEAP))
 		dir = ALLOC_RIGHT;
 
+	se = get_seg_entry(sbi, curseg->segno);
+	printk(KERN_ERR "\n <new_curseg - before> segno: %d mtime: %llu", segno, se->mtime);
+
 	segno = __get_next_segno(sbi, type);
 	get_new_segment(sbi, &segno, new_sec, dir);
 	curseg->next_segno = segno;
 	reset_curseg(sbi, type, 1);
 	curseg->alloc_type = LFS;
+	printk(KERN_ERR "\n <new_curseg - after EMPTY SEGMENT> segno: %d mtime: %llu", segno, se->mtime);
 }
 
 static void __next_free_blkoff(struct f2fs_sb_info *sbi,
@@ -2623,6 +2638,11 @@ static void allocate_segment_by_default(struct f2fs_sb_info *sbi,
 						int type, bool force)
 {
 	struct curseg_info *curseg = CURSEG_I(sbi, type);
+	struct seg_entry *se;
+	struct sit_info * sit_i = SIT_I(sbi);
+
+	se = get_seg_entry(sbi, curseg->segno);
+	printk(KERN_ERR "\n <allocate_segment_by_default::before> segno: %d mtime: %llu", curseg->segno, se->mtime);
 
 	if (force)
 		new_curseg(sbi, type, true);
@@ -2638,6 +2658,11 @@ static void allocate_segment_by_default(struct f2fs_sb_info *sbi,
 		new_curseg(sbi, type, false);
 
 	stat_inc_seg_type(sbi, curseg);
+	se = get_seg_entry(sbi, curseg->segno);
+	printk(KERN_ERR "\n <allocate_segment_by_default::after::EMPTY_SEGMENT> segno: %d mtime: %llu", curseg->segno, se->mtime);
+	printk(KERN_ERR "\n sit_i:: mounted_time: %llu elapsed_time: %llu min_mtime: %llu, max_mtime: %llu",
+					sit_i->mounted_time, sit_i->elapsed_time, sit_i->min_mtime, sit_i->max_mtime);
+
 }
 
 void f2fs_allocate_new_segments(struct f2fs_sb_info *sbi)
@@ -4258,6 +4283,8 @@ static void init_min_max_mtime(struct f2fs_sb_info *sbi)
 	}
 	sit_i->max_mtime = get_mtime(sbi, false);
 	up_write(&sit_i->sentry_lock);
+	printk(KERN_ERR "\n sit_i:: mounted_time: %llu elapsed_time: %llu min_mtime: %llu, max_mtime: %llu",
+					sit_i->mounted_time, sit_i->elapsed_time, sit_i->min_mtime, sit_i->max_mtime);
 }
 
 int f2fs_build_segment_manager(struct f2fs_sb_info *sbi)
