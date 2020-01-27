@@ -13,7 +13,7 @@ sudo benchmarks/layout_score.sh
 date
 sudo umount /mnt
 cd /github/f2fs-tools/dumpinodes
-sudo ./dumpinodes.f2fs /dev/sdb | tee /github/f2fs-tools/dumpinodes/results-out/cost-age/output.`date -Ihours`
+sudo ./dumpinodes.f2fs /dev/sdb | tee /github/f2fs-tools/dumpinodes/results-out-cb/cost-age/output.`date -Ihours`
 sudo rmmod f2fs
 cd /github/linux/
 sudo rm /lib/modules/`uname -r`/kernel/fs/f2fs/f2fs.ko
