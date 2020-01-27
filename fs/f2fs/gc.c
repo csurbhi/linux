@@ -21,7 +21,7 @@
 #include "gc.h"
 #include <trace/events/f2fs.h>
 
-#define TOTAL_SECS_CLEAN 7
+#define TOTAL_SECS_CLEAN 1
 
 struct kmem_cache * gc_seg_node_cache;
 
@@ -93,7 +93,7 @@ static int gc_thread_func(void *data)
 		}
 check_idle:
 		if (!is_idle(sbi, GC_TIME)) {
-			increase_sleep_time(gc_th, &wait_ms);
+			//increase_sleep_time(gc_th, &wait_ms);
 			mutex_unlock(&sbi->gc_mutex);
 			stat_io_skip_bggc_count(sbi);
 			goto next;
@@ -101,13 +101,18 @@ check_idle:
 
 		if (has_enough_invalid_blocks(sbi))
 			decrease_sleep_time(gc_th, &wait_ms);
+		/*
 		else
 			increase_sleep_time(gc_th, &wait_ms);
+		*/
 do_gc:
 		stat_inc_bggc_count(sbi);
-
+		before = ktime_get_real_seconds();
+		ret = f2fs_gc(sbi, test_opt(sbi, FORCE_FG_GC), true, NULL_SEGNO);
+		after = ktime_get_read_seconds();
+		printk("\n Cleaning took: %llu seconds", after - before);
+		if (ret) {
 		/* if return value is not zero, no victim was selected */
-		if (f2fs_gc(sbi, test_opt(sbi, FORCE_FG_GC), true, NULL_SEGNO)) {
 			wait_ms = gc_th->no_gc_sleep_time;
 			printk(KERN_INFO "\n no more gc!");
 		}
@@ -1402,6 +1407,8 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 	unsigned char type;
 	int submitted = 0, ret = 0;
 	struct gc_seg_list *cur_seg, *next_seg;
+
+	gc_type = FG_GC;
 
 	list_for_each_entry_safe(cur_seg, next_seg, &seglist->list, list) {
 		segno = cur_seg->segno;
