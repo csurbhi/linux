@@ -21,7 +21,7 @@
 #include "gc.h"
 #include <trace/events/f2fs.h>
 
-#define TOTAL_SECS_CLEAN 1
+#define TOTAL_SECS_CLEAN 3
 
 struct kmem_cache * gc_seg_node_cache;
 
@@ -31,6 +31,9 @@ static int gc_thread_func(void *data)
 	struct f2fs_gc_kthread *gc_th = sbi->gc_thread;
 	wait_queue_head_t *wq = &sbi->gc_thread->gc_wait_queue_head;
 	unsigned int wait_ms;
+	int ret;
+	unsigned long long before, after;
+	before = 0; after = 0;
 
 	wait_ms = gc_th->min_sleep_time;
 
@@ -93,7 +96,7 @@ static int gc_thread_func(void *data)
 		}
 check_idle:
 		if (!is_idle(sbi, GC_TIME)) {
-			//increase_sleep_time(gc_th, &wait_ms);
+			increase_sleep_time(gc_th, &wait_ms);
 			mutex_unlock(&sbi->gc_mutex);
 			stat_io_skip_bggc_count(sbi);
 			goto next;
@@ -101,15 +104,13 @@ check_idle:
 
 		if (has_enough_invalid_blocks(sbi))
 			decrease_sleep_time(gc_th, &wait_ms);
-		/*
 		else
 			increase_sleep_time(gc_th, &wait_ms);
-		*/
 do_gc:
 		stat_inc_bggc_count(sbi);
 		before = ktime_get_real_seconds();
 		ret = f2fs_gc(sbi, test_opt(sbi, FORCE_FG_GC), true, NULL_SEGNO);
-		after = ktime_get_read_seconds();
+		after = ktime_get_real_seconds();
 		printk("\n Cleaning took: %llu seconds", after - before);
 		if (ret) {
 		/* if return value is not zero, no victim was selected */
@@ -1046,17 +1047,20 @@ retry:
 		f2fs_wait_on_page_writeback(page, DATA, true, true);
 
 		set_page_dirty(page);
+		set_gc_page(page);
 		if (clear_page_dirty_for_io(page)) {
 			inode_dec_dirty_pages(inode);
 			f2fs_remove_dirty_inode(inode);
 		}
 
+		set_gc_page(page);
 		set_cold_data(page);
 
 		err = f2fs_do_write_data_page(&fio);
 		if (err) {
 			printk(KERN_ERR "\n COuld not write data.!");
 			clear_cold_data(page);
+			clear_gc_page(page);
 			if (err == -ENOMEM) {
 				congestion_wait(BLK_RW_ASYNC, HZ/50);
 				goto retry;
@@ -1081,7 +1085,7 @@ int cmp_blk_nrs(void *priv, struct list_head *a, struct list_head *b)
 	return (entry_a->file_blk_nr > entry_b->file_blk_nr);
 }
 
-#define NRWRITES 65536 /* one section */
+#define NRWRITES (65536) /* TOTAL_SECS_CLEAN)  one section */
 void static delete_entries(struct inode_entry *ie)
 {
 	struct offset_entry *entry, *next_entry;
@@ -1115,9 +1119,11 @@ static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 	block_t file_blk_nr = 0;
 
 	/* TESTING/DEBUGGING */
-	gc_type = FG_GC;
+	//gc_type = FG_GC;
 redo:
 	iocount = 0;
+	plugged = false;
+	locked = false;
 	list_for_each_entry_safe(ie, next_ie, &gc_list->ilist, list) {
 		int err;
 		block_t start_addr;
@@ -1159,32 +1165,29 @@ redo:
                                                                 ofs_in_node;
 			 * start_addr 
 			 */
-	
+
 			/* Get an inode by ino with checking validity */
-			/*
 			if (!locked) {
 				if (!is_alive(sbi, sum, &dni, start_addr + ofs_in_seg, &nofs)) {
-					printk(KERN_ERR, "\n Inode is dead!");
-					dead = true;
-					break;
+					/* A stale page does not need any cleaning. Delete this entry */
+					printk(KERN_ERR, "\n This page (nofs: %u, ofs_in_seg: %u), is stale! deleting it", nofs, ofs_in_seg);
+					list_del(&entry->list);
+					kmem_cache_free(f2fs_offset_entry_slab, entry);
+					continue;
 				}
-			}*/
-
-			
-			if (iocount == 0) {
-				printk(KERN_ERR "\n blk_start_plug() called!, inode is alive");
-				blk_start_plug(&plug);
-				plugged = true;
 			}
 
 			if (!locked) {
 				if (S_ISREG(inode->i_mode)) {
-					if (!down_write_trylock(&fi->i_gc_rwsem[READ]))
+					if (!down_write_trylock(&fi->i_gc_rwsem[READ])) {
+						printk(KERN_ERR "\n Could not lock the inode! Breaking out");
 						break;
+					}
 					if (!down_write_trylock(
 							&fi->i_gc_rwsem[WRITE])) {
 						sbi->skipped_gc_rwsem++;
 						up_write(&fi->i_gc_rwsem[READ]);
+						printk(KERN_ERR, "\n Could not lock fi->i_gc_rwsem");
 						break;
 					}
 					locked = true;
@@ -1193,6 +1196,13 @@ redo:
 					/* wait for all inflight aio data */
 					inode_dio_wait(inode);
 				}
+			}
+
+			if (iocount == 0) {
+				printk("\n Trying the next set of writes for inode nr: %u , count: %u", ie->inum, count);
+				printk(KERN_ERR "\n blk_start_plug() called!, inode is alive");
+				blk_start_plug(&plug);
+				plugged = true;
 			}
 
 			err = 0;
@@ -1220,7 +1230,8 @@ redo:
 					}
 					blk_finish_plug(&plug);
 					plugged = false;
-
+					count = count - NRWRITES;
+					printk(KERN_ERR "\n Remaining writes in this inode: %u", count);
 				}
 				/*
 				 * This is done in put_gc_inode() called from f2fs_gc()
@@ -1236,24 +1247,24 @@ redo:
 			up_write(&fi->i_gc_rwsem[READ]);
 			locked = false;
 		}
-		if(unlikely(dead)) {
-			printk(KERN_ERR "\n inode is dead, so deleting all entries! \n");
-			delete_entries(ie);
-		}
 	}
 	if (plugged) {
-		if (gc_type == FG_GC) {
+		if ((gc_type == FG_GC) && (iocount)) {
 			printk(KERN_ERR "\n 2. calling f2fs_submit_merged_writes()");
 			f2fs_submit_merged_write(sbi, DATA);
 		}
 		blk_finish_plug(&plug);
+		plugged = false;
+		printk(KERN_ERR "\n %d writes submitted! ", iocount);
 	}
 	phase = phase + 1;
 	printk(KERN_ERR "\n iocount: %u", iocount);
-	if (phase == TOTAL_SECS_CLEAN) {
-		printk(KERN_ERR "\n Cleaned %d section", phase);
+	//if (phase <= TOTAL_SECS_CLEAN)
+	if (phase < 2) {
+		printk(KERN_ERR "\n Cleaning phased: %d", phase);
 		goto redo;
 	}
+	printk(KERN_ERR "\n returning from gc_move_inodes_pages(), submitted: %d", submitted);
 	return submitted;
 }
 
@@ -1408,7 +1419,7 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 	int submitted = 0, ret = 0;
 	struct gc_seg_list *cur_seg, *next_seg;
 
-	gc_type = FG_GC;
+	//gc_type = FG_GC;
 
 	list_for_each_entry_safe(cur_seg, next_seg, &seglist->list, list) {
 		segno = cur_seg->segno;
@@ -1521,14 +1532,12 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 
 		printk("\n data_seg_sel is true. Now will try to actually clean!");
 		gc_move_inodes_pages(sbi, gc_list, gc_type);
-		submitted = 1;
 	}
 	if (type == NODE) {
 		if (submitted)
 			f2fs_submit_merged_write(sbi, NODE);	
 		 blk_finish_plug(&plug);
 	}
-
 
 	stat_inc_call_count(sbi->stat_info);
 

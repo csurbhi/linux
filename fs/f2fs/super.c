@@ -1096,6 +1096,7 @@ static void f2fs_put_super(struct super_block *sb)
 
 	f2fs_unregister_sysfs(sbi);
 
+
 	sb->s_fs_info = NULL;
 	if (sbi->s_chksum_driver)
 		crypto_free_shash(sbi->s_chksum_driver);
@@ -3451,6 +3452,10 @@ reset_checkpoint:
 			sbi->valid_super_block ? 1 : 2, err);
 	}
 
+	atomic64_set(&sbi->gc_writes, 0);
+	atomic64_set(&sbi->app_writes, 0);
+	atomic64_set(&sbi->switch_segs, 0);
+
 	f2fs_join_shrinker(sbi);
 
 	f2fs_tuning_parameters(sbi);
@@ -3543,6 +3548,9 @@ static void kill_f2fs_super(struct super_block *sb)
 {
 	if (sb->s_root) {
 		struct f2fs_sb_info *sbi = F2FS_SB(sb);
+		unsigned long long gc_writes_now = 0;
+		unsigned long long app_writes_now = 0;
+		unsigned long long switch_segs = 0;
 
 		set_sbi_flag(sbi, SBI_IS_CLOSE);
 		f2fs_stop_gc_thread(sbi);
@@ -3555,6 +3563,12 @@ static void kill_f2fs_super(struct super_block *sb)
 			};
 			f2fs_write_checkpoint(sbi, &cpc);
 		}
+		app_writes_now = atomic64_read(&sbi->app_writes);
+		gc_writes_now = atomic64_read(&sbi->gc_writes);
+		switch_segs = atomic64_read(&sbi->switch_segs);
+		printk(KERN_NOTICE "\n (Modified) switch segment count: %llu \n", switch_segs);
+		printk(KERN_NOTICE "\n (Modified) application writes: %llu GC writes: %llu \n", app_writes_now, gc_writes_now);
+		printk(KERN_NOTICE "\n Unmounting f2fs");
 
 		if (is_sbi_flag_set(sbi, SBI_IS_RECOVERED) && f2fs_readonly(sb))
 			sb->s_flags &= ~SB_RDONLY;
