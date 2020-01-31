@@ -109,7 +109,7 @@ check_idle:
 do_gc:
 		stat_inc_bggc_count(sbi);
 		before = ktime_get_real_seconds();
-		ret = f2fs_gc(sbi, test_opt(sbi, FORCE_FG_GC), true, NULL_SEGNO);
+		//ret = f2fs_gc(sbi, test_opt(sbi, FORCE_FG_GC), true, NULL_SEGNO);
 		after = ktime_get_real_seconds();
 		printk("\n Cleaning took: %llu seconds", after - before);
 		if (ret) {
@@ -1027,6 +1027,7 @@ static int move_data_page(struct inode *inode, block_t bidx, int gc_type,
 		//printk("\n Setting page dirty");
 		set_page_dirty(page);
 		set_cold_data(page);
+		set_gc_page(page);
 	} else {
 		struct f2fs_io_info fio = {
 			.sbi = F2FS_I_SB(inode),
@@ -1047,7 +1048,6 @@ retry:
 		f2fs_wait_on_page_writeback(page, DATA, true, true);
 
 		set_page_dirty(page);
-		set_gc_page(page);
 		if (clear_page_dirty_for_io(page)) {
 			inode_dec_dirty_pages(inode);
 			f2fs_remove_dirty_inode(inode);
@@ -1163,7 +1163,7 @@ redo:
 			 * and call: 
 			 * start_bidx = f2fs_start_bidx_of_node(nofs, inode) +
                                                                 ofs_in_node;
-			 * start_addr 
+			 * recalculate teh start_addr here 
 			 */
 
 			/* Get an inode by ino with checking validity */
@@ -1175,9 +1175,7 @@ redo:
 					kmem_cache_free(f2fs_offset_entry_slab, entry);
 					continue;
 				}
-			}
 
-			if (!locked) {
 				if (S_ISREG(inode->i_mode)) {
 					if (!down_write_trylock(&fi->i_gc_rwsem[READ])) {
 						printk(KERN_ERR "\n Could not lock the inode! Breaking out");
@@ -1217,6 +1215,7 @@ redo:
 				iocount++;
 				/* For some reason the loop isnt working, hence we repeat */
 				if (iocount == NRWRITES) {
+					submitted++;
 					printk(KERN_ERR "\n %d writes submitted! ", NRWRITES);
 					iocount = 0;
 					if (locked) {
@@ -1242,6 +1241,10 @@ redo:
 				printk(KERN_ERR "\n err returned: %d \n", err);
 			}
 		}
+		/* Here the inode blocks writing is done, but total I/O are
+		 * not over - and less that NRWRITES. so plugged may not be 
+		 * false and iocount may not be 0
+		 */
 		if (locked) {
 			up_write(&fi->i_gc_rwsem[WRITE]);
 			up_write(&fi->i_gc_rwsem[READ]);
@@ -1506,7 +1509,8 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 									gc_type);
 			}
 			else {
-				submitted += gc_data_segment(sbi, sum->entries, gc_list,
+				submitted = 0;
+				gc_data_segment(sbi, sum->entries, gc_list,
 								segno, gc_type);
 				data_seg_sel = true;
 			}
@@ -1531,7 +1535,7 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 		 */
 
 		printk("\n data_seg_sel is true. Now will try to actually clean!");
-		gc_move_inodes_pages(sbi, gc_list, gc_type);
+		submitted = gc_move_inodes_pages(sbi, gc_list, gc_type);
 	}
 	if (type == NODE) {
 		if (submitted)
@@ -1563,6 +1567,8 @@ int f2fs_gc(struct f2fs_sb_info *sbi, bool sync,
 	unsigned int nr_sec_clean = 0;
 	struct gc_seg_list *new_seg;
 	int type = NO_CHECK_TYPE;
+
+	return 0;
 
 	trace_f2fs_gc_begin(sbi->sb, sync, background,
 				get_pages(sbi, F2FS_DIRTY_NODES),
