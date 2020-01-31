@@ -1104,16 +1104,13 @@ static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 	unsigned int segno;
 	int old_gc_type = BG_GC;
 	int count = 0, iocount=0;
-	struct blk_plug plug;
 	int phase = 0;
-	bool plugged = false;
 	bool locked = false;
 	block_t file_blk_nr = 0;
 
 	/* TESTING/DEBUGGING */
-	gc_type = FG_GC;
+	//gc_type = FG_GC;
 redo:
-	plugged = false;
 	locked = false;
 	iocount = 0;
 	list_for_each_entry_safe(ie, next_ie, &gc_list->ilist, list) {
@@ -1170,15 +1167,7 @@ redo:
 	                		kmem_cache_free(f2fs_offset_entry_slab, entry);
 					continue;
 				}
-			}
 
-			if (iocount == 0) {
-				printk(KERN_ERR "\n blk_start_plug() called!, inode is alive");
-				blk_start_plug(&plug);
-				plugged = true;
-			}
-
-			if (!locked) {
 				if (S_ISREG(inode->i_mode)) {
 					if (!down_write_trylock(&fi->i_gc_rwsem[READ]))
 						break;
@@ -1206,7 +1195,6 @@ redo:
 			stat_inc_data_blk_count(sbi, 1, gc_type);
 			if (!err) {
 				iocount++;
-				/* For some reason the loop isnt working, hence we repeat */
 				if (iocount == NRWRITES) {
 					printk(KERN_ERR "\n %d writes submitted! ", NRWRITES);
 					iocount = 0;
@@ -1219,9 +1207,6 @@ redo:
 						printk(KERN_ERR "\n 1. calling f2fs_submit_merged_writes()");
 						f2fs_submit_merged_write(sbi, DATA);
 					}
-					blk_finish_plug(&plug);
-					plugged = false;
-					submitted = submitted + 1;
 				}
 				/*
 				 * This is done in put_gc_inode() called from f2fs_gc()
@@ -1238,17 +1223,15 @@ redo:
 			locked = false;
 		}
 	}
-	if (plugged) {
+	if (iocount) {
 		if (gc_type == FG_GC) {
 			printk(KERN_ERR "\n 2. calling f2fs_submit_merged_writes()");
 			f2fs_submit_merged_write(sbi, DATA);
 		}
 		printk(KERN_ERR "\n %d writes submitted! ", iocount);
-		blk_finish_plug(&plug);
-		plugged = false;
 	}
 	phase = phase + 1;
-	printk(KERN_ERR "\n iocount: %u", iocount);
+	/* If for some reason all the blocks are not cleaned, then we repeat for that case */
 	if (phase <= 2) {
 		goto redo;
 	}
@@ -1449,9 +1432,7 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 		}
 
 		//printk(KERN_INFO "\n 2. cleaning: %d segno ", start_segno);
-		if (type == NODE) {
-			blk_start_plug(&plug);
-		}
+		blk_start_plug(&plug);
 
 		for (segno = start_segno; segno < end_segno; segno++) {
 
@@ -1523,8 +1504,8 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 	if (type == NODE) {
 		if (submitted)
 			f2fs_submit_merged_write(sbi, NODE);	
-		 blk_finish_plug(&plug);
 	}
+	blk_finish_plug(&plug);
 
 
 	stat_inc_call_count(sbi->stat_info);
