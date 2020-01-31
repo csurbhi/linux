@@ -31,6 +31,9 @@ static int gc_thread_func(void *data)
 	struct f2fs_gc_kthread *gc_th = sbi->gc_thread;
 	wait_queue_head_t *wq = &sbi->gc_thread->gc_wait_queue_head;
 	unsigned int wait_ms;
+	int ret;
+	unsigned long long before, after;
+	before = 0; after = 0;
 
 	wait_ms = gc_th->min_sleep_time;
 
@@ -93,7 +96,7 @@ static int gc_thread_func(void *data)
 		}
 check_idle:
 		if (!is_idle(sbi, GC_TIME)) {
-			//increase_sleep_time(gc_th, &wait_ms);
+			increase_sleep_time(gc_th, &wait_ms);
 			mutex_unlock(&sbi->gc_mutex);
 			stat_io_skip_bggc_count(sbi);
 			goto next;
@@ -101,15 +104,13 @@ check_idle:
 
 		if (has_enough_invalid_blocks(sbi))
 			decrease_sleep_time(gc_th, &wait_ms);
-		/*
 		else
 			increase_sleep_time(gc_th, &wait_ms);
-		*/
 do_gc:
 		stat_inc_bggc_count(sbi);
 		before = ktime_get_real_seconds();
 		ret = f2fs_gc(sbi, test_opt(sbi, FORCE_FG_GC), true, NULL_SEGNO);
-		after = ktime_get_read_seconds();
+		after = ktime_get_real_seconds();
 		printk("\n Cleaning took: %llu seconds", after - before);
 		if (ret) {
 		/* if return value is not zero, no victim was selected */

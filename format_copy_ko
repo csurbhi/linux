@@ -2,7 +2,8 @@ sudo umount /mnt
 sudo rmmod f2fs
 sudo rm /lib/modules/`uname -r`/kernel/fs/f2fs/f2fs.ko
 ls -lh /lib/modules/`uname -r`/kernel/fs/f2fs/
-sudo cp no-gc/f2fs.ko /lib/modules/`uname -r`/kernel/fs/f2fs/f2fs.ko
+make
+sudo cp fs/f2fs/f2fs.ko /lib/modules/`uname -r`/kernel/fs/f2fs/f2fs.ko
 cd /github/f2fs-tools/mkfs
 ./mkfs.f2fs -t1 -a0 -m -f /dev/sdb
 sudo mount /mnt
@@ -11,13 +12,4 @@ sudo ./fix
 date
 sudo benchmarks/layout_score.sh 
 date
-sudo umount /mnt
-cd /github/f2fs-tools/dumpinodes
-sudo ./dumpinodes.f2fs /dev/sdb | tee /github/f2fs-tools/dumpinodes/results-out-cb/cost-age/output.`date -Ihours`
-sudo rmmod f2fs
-cd /github/linux/
-sudo rm /lib/modules/`uname -r`/kernel/fs/f2fs/f2fs.ko
-ls -lh /lib/modules/`uname -r`/kernel/fs/f2fs/
-make
-sudo cp fs/f2fs/f2fs.ko /lib/modules/`uname -r`/kernel/fs/f2fs/f2fs.ko
-sudo mount /mnt
+echo "keeping things mounted for GC"
