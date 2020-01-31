@@ -1116,8 +1116,10 @@ static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 	block_t file_blk_nr = 0;
 
 	/* TESTING/DEBUGGING */
-	gc_type = FG_GC;
+	gc_type = BG_GC;
 redo:
+	plugged = false;
+	locked = false;
 	iocount = 0;
 	list_for_each_entry_safe(ie, next_ie, &gc_list->ilist, list) {
 		int err;
@@ -1162,14 +1164,15 @@ redo:
 			 */
 	
 			/* Get an inode by ino with checking validity */
-			/*
 			if (!locked) {
 				if (!is_alive(sbi, sum, &dni, start_addr + ofs_in_seg, &nofs)) {
 					printk(KERN_ERR, "\n Inode is dead!");
 					dead = true;
-					break;
+					list_del(&entry->list);
+	                		kmem_cache_free(f2fs_offset_entry_slab, entry);
+					continue;
 				}
-			}*/
+			}
 
 			
 			if (iocount == 0) {
@@ -1237,10 +1240,6 @@ redo:
 			up_write(&fi->i_gc_rwsem[READ]);
 			locked = false;
 		}
-		if(unlikely(dead)) {
-			printk(KERN_ERR "\n inode is dead, so deleting all entries! \n");
-			delete_entries(ie);
-		}
 	}
 	if (plugged) {
 		if (gc_type == FG_GC) {
@@ -1248,10 +1247,11 @@ redo:
 			f2fs_submit_merged_write(sbi, DATA);
 		}
 		blk_finish_plug(&plug);
+		plugged = false;
 	}
 	phase = phase + 1;
 	printk(KERN_ERR "\n iocount: %u", iocount);
-	if (phase == TOTAL_SECS_CLEAN) {
+	if (phase <= 2) {
 		printk(KERN_ERR "\n Cleaned %d section", phase);
 		goto redo;
 	}
