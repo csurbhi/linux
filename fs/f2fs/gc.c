@@ -21,7 +21,7 @@
 #include "gc.h"
 #include <trace/events/f2fs.h>
 
-#define TOTAL_SECS_CLEAN 1
+#define TOTAL_SECS_CLEAN 2
 
 struct kmem_cache * gc_seg_node_cache;
 
@@ -32,9 +32,10 @@ static int gc_thread_func(void *data)
 	wait_queue_head_t *wq = &sbi->gc_thread->gc_wait_queue_head;
 	unsigned int wait_ms;
 	int ret;
-	unsigned long long before, after;
-	before = 0; after = 0;
+	struct timespec64 before, after;
 
+
+	//wait_ms = gc_th->no_gc_sleep_time;
 	wait_ms = gc_th->min_sleep_time;
 
 	set_freezable();
@@ -96,6 +97,7 @@ static int gc_thread_func(void *data)
 		}
 check_idle:
 		if (!is_idle(sbi, GC_TIME)) {
+			//wait_ms = gc_th->min_sleep_time;
 			increase_sleep_time(gc_th, &wait_ms);
 			mutex_unlock(&sbi->gc_mutex);
 			stat_io_skip_bggc_count(sbi);
@@ -108,21 +110,14 @@ check_idle:
 			increase_sleep_time(gc_th, &wait_ms);
 do_gc:
 		stat_inc_bggc_count(sbi);
-		before = ktime_get_real_seconds();
+		ktime_get_ts64(&before);
 		ret = f2fs_gc(sbi, test_opt(sbi, FORCE_FG_GC), true, NULL_SEGNO);
-		after = ktime_get_real_seconds();
-		printk("\n Cleaning took: %llu seconds", after - before);
+		ktime_get_ts64(&after);
+		printk("\n Cleaning took: %llu seconds %llu nsec", after.tv_sec - before.tv_sec, after.tv_nsec - before.tv_nsec);
 		if (ret) {
 		/* if return value is not zero, no victim was selected */
 			wait_ms = gc_th->no_gc_sleep_time;
 			printk(KERN_INFO "\n no more gc!");
-		}
-		else {
-			if(test_opt(sbi, FORCE_FG_GC))
-				goto check_idle;
-			/* hack to do GC continuously
-			goto do_gc;
-			*/
 		}
 
 		trace_f2fs_background_gc(sbi->sb, wait_ms,
@@ -1116,7 +1111,7 @@ static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 	block_t file_blk_nr = 0;
 
 	/* TESTING/DEBUGGING */
-	gc_type = BG_GC;
+	gc_type = FG_GC;
 redo:
 	plugged = false;
 	locked = false;
@@ -1131,18 +1126,21 @@ redo:
 		if(unlikely(!inode)) {
 			continue;
 		}
+		if((IS_ERR(inode)) || is_bad_inode(inode))
+			continue;
 
 		fi = F2FS_I(inode);
-		/* sort the inode list */
-		list_sort(NULL, &ie->gc_inode.off_list.list, cmp_blk_nrs);
+
 		count = 0;
 		list_for_each_entry_safe(entry, next_entry, &ie->gc_inode.off_list.list , list) {
-			/*
-			if (count < 100)
-				printk(KERN_INFO "\n inode_nr: %lu, blk_nr: %u", ie->inum, entry->file_blk_nr);
-			*/
 			count++;
 		}
+		if (count == 0)
+			continue;
+
+		/* sort the inode list */
+		list_sort(NULL, &ie->gc_inode.off_list.list, cmp_blk_nrs);
+		
 		printk(KERN_ERR "\n inode nr: %u, count: %u", ie->inum, count);
 
 		list_for_each_entry_safe(entry, next_entry, &ie->gc_inode.off_list.list , list) {
@@ -1174,7 +1172,6 @@ redo:
 				}
 			}
 
-			
 			if (iocount == 0) {
 				printk(KERN_ERR "\n blk_start_plug() called!, inode is alive");
 				blk_start_plug(&plug);
@@ -1224,7 +1221,7 @@ redo:
 					}
 					blk_finish_plug(&plug);
 					plugged = false;
-
+					submitted = submitted + 1;
 				}
 				/*
 				 * This is done in put_gc_inode() called from f2fs_gc()
@@ -1246,13 +1243,13 @@ redo:
 			printk(KERN_ERR "\n 2. calling f2fs_submit_merged_writes()");
 			f2fs_submit_merged_write(sbi, DATA);
 		}
+		printk(KERN_ERR "\n %d writes submitted! ", iocount);
 		blk_finish_plug(&plug);
 		plugged = false;
 	}
 	phase = phase + 1;
 	printk(KERN_ERR "\n iocount: %u", iocount);
 	if (phase <= 2) {
-		printk(KERN_ERR "\n Cleaned %d section", phase);
 		goto redo;
 	}
 	return submitted;
@@ -1409,7 +1406,7 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 	int submitted = 0, ret = 0;
 	struct gc_seg_list *cur_seg, *next_seg;
 
-	gc_type = FG_GC;
+	//gc_type = FG_GC;
 
 	list_for_each_entry_safe(cur_seg, next_seg, &seglist->list, list) {
 		segno = cur_seg->segno;
@@ -1521,8 +1518,7 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 		 */
 
 		printk("\n data_seg_sel is true. Now will try to actually clean!");
-		gc_move_inodes_pages(sbi, gc_list, gc_type);
-		submitted = 1;
+		submitted = gc_move_inodes_pages(sbi, gc_list, gc_type);
 	}
 	if (type == NODE) {
 		if (submitted)
@@ -1599,7 +1595,7 @@ gc_more:
 			gc_type = FG_GC;
 	}
 
-	printk(KERN_INFO "\n gc_type: %d", gc_type);
+	//printk(KERN_INFO "\n gc_type: %d", gc_type);
 
 	/* f2fs_balance_fs doesn't need to do BG_GC in critical path. */
 	if (gc_type == BG_GC && !background) {
