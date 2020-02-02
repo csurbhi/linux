@@ -21,7 +21,8 @@
 #include "gc.h"
 #include <trace/events/f2fs.h>
 
-#define TOTAL_SECS_CLEAN 7
+#define TOTAL_SECS_CLEAN 1
+#define NRWRITES (65536 * TOTAL_SECS_CLEAN) /* one section */
 
 struct kmem_cache * gc_seg_node_cache;
 
@@ -356,7 +357,7 @@ static int get_victim_by_default(struct f2fs_sb_info *sbi,
 	p.min_segno = NULL_SEGNO;
 	p.min_cost = get_max_cost(sbi, &p);
 
-	printk(KERN_INFO "\n Inside get_victim_by_default., type: %s gc_mode:%d", (type == NODE) ? "Node" : "Data", p.gc_mode);
+	//printk(KERN_INFO "\n Inside get_victim_by_default., type: %s gc_mode:%d", (type == NODE) ? "Node" : "Data", p.gc_mode);
 
 	if (*result != NULL_SEGNO) {
 		if (get_valid_blocks(sbi, *result, false) &&
@@ -373,9 +374,9 @@ static int get_victim_by_default(struct f2fs_sb_info *sbi,
 			segno = sbi->next_victim_seg[BG_GC];
 			secno = GET_SEC_FROM_SEG(sbi, segno);
 			if (!sec_usage_check(sbi, secno)) {
-				printk(KERN_ERR "\n segno: %d secno: %d, Neither cur sec nor  cur_victim_seg", segno, secno);
+				//printk(KERN_ERR "\n segno: %d secno: %d, Neither cur sec nor  cur_victim_seg", segno, secno);
 				if ((gc_type == FG_GC) || (gc_type == BG_GC && !test_bit(secno, dirty_i->victim_secmap))) {
-					printk(KERN_INFO "\n test_bit(%d, dirty_i->victim_secmap) set, nsearched: %d", nsearched);
+				//	printk(KERN_INFO "\n test_bit(%d, dirty_i->victim_secmap) set, nsearched: %d", nsearched);
 					p.min_segno = segno;
 					*result = p.min_segno;
 					sbi->next_victim_seg[BG_GC] = NULL_SEGNO;
@@ -407,9 +408,9 @@ static int get_victim_by_default(struct f2fs_sb_info *sbi,
 		unsigned long cost;
 
 		segno = find_next_bit(p.dirty_segmap, last_segment, p.offset);
-		printk(KERN_INFO "\n Considering segment: %d", segno);
+		//printk(KERN_INFO "\n Considering segment: %d", segno);
 		if (segno >= last_segment) {
-			printk(KERN_INFO "\n segno > last_segment (%d: %d)", segno, last_segment);
+			//printk(KERN_INFO "\n segno > last_segment (%d: %d)", segno, last_segment);
 			if (sm->last_victim[p.gc_mode]) {
 				last_segment =
 					sm->last_victim[p.gc_mode];
@@ -440,17 +441,17 @@ static int get_victim_by_default(struct f2fs_sb_info *sbi,
 					continue;
 			} else {
 				/* requesting node segment */
-				if (found_type < CURSEG_COLD_DATA)
+				if (found_type <= CURSEG_COLD_DATA)
 					continue;
 				
 			}
 		}
  
 		secno = GET_SEC_FROM_SEG(sbi, segno);
-		printk(KERN_INFO "\n secno: %d, segno: %d, nsearched: %d", secno, segno, nsearched);
+		//printk(KERN_INFO "\n secno: %d, segno: %d, nsearched: %d req_type: %d found_type: %d", secno, segno, nsearched, type, found_type);
 
 		if (sec_usage_check(sbi, secno)) {
-			printk(KERN_ERR "\n secno: %d Either cur sec or  cur_victim_seg", secno);
+			//printk(KERN_ERR "\n secno: %d Either cur sec or  cur_victim_seg", secno);
 			goto next;
 		}
 		/* Don't touch checkpointed data */
@@ -501,7 +502,10 @@ out:
 				prefree_segments(sbi), free_segments(sbi));
 	mutex_unlock(&dirty_i->seglist_lock);
 
-	printk(KERN_INFO "\n Min segno: %d", p.min_segno);
+	//printk(KERN_INFO "\n Min segno: %d", p.min_segno);
+	if (p.min_segno != NULL_SEGNO) {
+		printk(KERN_INFO "\n Type of min segno: %d, requested type: %d", get_segment_type(sbi, p.min_segno), type);
+	}
 
 	return (p.min_segno == NULL_SEGNO) ? 0 : 1;
 }
@@ -728,8 +732,9 @@ static bool is_alive(struct f2fs_sb_info *sbi, struct f2fs_summary *sum,
 	source_blkaddr = datablock_addr(NULL, node_page, ofs_in_node);
 	f2fs_put_page(node_page, 1);
 
-	if (source_blkaddr != blkaddr)
+	if (source_blkaddr != blkaddr) {
 		return false;
+	}
 	return true;
 }
 
@@ -1080,7 +1085,6 @@ int cmp_blk_nrs(void *priv, struct list_head *a, struct list_head *b)
 	return (entry_a->file_blk_nr > entry_b->file_blk_nr);
 }
 
-#define NRWRITES 65536 /* one section */
 void static delete_entries(struct inode_entry *ie)
 {
 	struct offset_entry *entry, *next_entry;
@@ -1092,27 +1096,71 @@ void static delete_entries(struct inode_entry *ie)
 }
 
 
+int print_segment_details(struct f2fs_sb_info *sbi, int segno)
+{
+	int off;
+	nid_t nid;
+	struct f2fs_summary *entry;
+	struct node_info dni; /* dnode info for the data */
+	block_t start_addr;
+	struct page *sum_page;
+	struct f2fs_summary_block *sum;
+	unsigned int ofs_in_node, nofs;
+
+	start_addr = START_BLOCK(sbi, segno);
+
+	sum_page = find_get_page(META_MAPPING(sbi),
+			GET_SUM_BLOCK(sbi, segno));
+	f2fs_put_page(sum_page, 0);
+	if (get_valid_blocks(sbi, segno, false) == 0) {
+		printk(KERN_ERR "\n segno has no valid blocks! ");
+		return -1;
+	}
+	sum = page_address(sum_page);
+	entry = sum->entries;
+	nid = le32_to_cpu(entry->nid);
+	f2fs_ra_meta_pages(sbi, NAT_BLOCK_OFFSET(nid), 1,
+						META_NAT, true);
+
+	f2fs_ra_node_page(sbi, nid);
+
+
+	for (off = 0; off < sbi->blocks_per_seg; off++, entry++) {
+		if (check_valid_map(sbi, segno, off) == 0) {
+			/* This block is marked invalid! */
+			continue;
+		}
+		if (!is_alive(sbi, entry, &dni, start_addr + off, &nofs)) {
+			printk(KERN_ERR "\n blk att offset: %d is not alive!");
+		}
+	}
+
+}
+
+
 static int gc_move_inodes_pages(struct f2fs_sb_info *sbi,
 				struct gc_inode_list *gc_list, int gc_type)
 {
 	/* phase 4 */
 	struct inode_entry *ie, *next_ie;
 	struct offset_entry *entry, *next_entry;
+	struct f2fs_summary *sum_entries;
 	struct inode *inode;
 	struct node_info dni; /* dnode info for the data */
 	unsigned int ofs_in_node, nofs, ofs_in_seg;
-	block_t start_bidx;
 	struct f2fs_summary *sum;
+	struct f2fs_summary_block *sum_blk;
 	int submitted = 0;
 	unsigned int segno;
-	int old_gc_type = BG_GC;
 	int count = 0, iocount=0;
 	int phase = 0;
 	bool locked = false;
 	block_t file_blk_nr = 0;
+	struct page *sum_page;
+	nid_t nid;
 
 	/* TESTING/DEBUGGING */
-	//gc_type = FG_GC;
+	gc_type = FG_GC;
 redo:
 	locked = false;
 	iocount = 0;
@@ -1120,7 +1168,6 @@ redo:
 		int err;
 		block_t start_addr;
 		struct f2fs_inode_info *fi;
-		int dead = false;
 
 		inode = ie->gc_inode.inode;
 		if(unlikely(!inode)) {
@@ -1135,22 +1182,32 @@ redo:
 		list_for_each_entry_safe(entry, next_entry, &ie->gc_inode.off_list.list , list) {
 			count++;
 		}
+		/*
 		if (count == 0)
 			continue;
-
+		*/	
 		/* sort the inode list */
 		list_sort(NULL, &ie->gc_inode.off_list.list, cmp_blk_nrs);
 		
 		printk(KERN_ERR "\n inode nr: %u, count: %u", ie->inum, count);
 
 		list_for_each_entry_safe(entry, next_entry, &ie->gc_inode.off_list.list , list) {
-			ofs_in_node = entry->ofs_in_node;
+			/*Reinitialize everything */
 			segno = entry->segno;
-			ofs_in_seg = entry->ofs_in_seg;
-			sum = entry->sum;
-			start_addr = ie->start_addr;
-			file_blk_nr = entry->file_blk_nr;
+			start_addr = START_BLOCK(sbi, segno);
 
+			sum_page = find_get_page(META_MAPPING(sbi),
+						GET_SUM_BLOCK(sbi, segno));
+			f2fs_put_page(sum_page, 0);
+			if (get_valid_blocks(sbi, segno, false) == 0) {
+				printk(KERN_ERR "\n segno %d has no valid blocks! ", segno);
+				list_del(&entry->list);
+	                	kmem_cache_free(f2fs_offset_entry_slab, entry);
+				continue;
+			}
+			sum_blk = page_address(sum_page);
+			sum_entries = sum_blk->entries;
+			
 			/* TODO: All of this information may have changed as the inode
 			 * was unlocked. Sufficient for the RPE, but not in general
 			 *
@@ -1160,29 +1217,64 @@ redo:
                                                                 ofs_in_node;
 			 * start_addr 
 			 */
-	
+
+		
+			ofs_in_node = entry->ofs_in_node;
+			ofs_in_seg = entry->ofs_in_seg;
+			//sum = entry->sum;
+			//start_addr = ie->start_addr;
+			file_blk_nr = entry->file_blk_nr;
+
+			sum = sum_entries + ofs_in_seg;
+			nid = le32_to_cpu(sum->nid);
+			f2fs_ra_meta_pages(sbi, NAT_BLOCK_OFFSET(nid), 1,
+									META_NAT, true);
+			f2fs_ra_node_page(sbi, nid);
+
 			/* Get an inode by ino with checking validity */
 			if (!locked) {
-				if (!is_alive(sbi, sum, &dni, start_addr + ofs_in_seg, &nofs)) {
-					/* Before this was "Inode is dead"*/
-					printk(KERN_ERR, "\n Inode nr: %u, file blk: %u is dead!", ie->inum, file_blk_nr);
-					dead = true;
+				if (check_valid_map(sbi, segno, ofs_in_seg) == 0) {
+					if (iocount == 0) {
+						printk(KERN_ERR "\n Inode nr: %u, file blk: %u segno: %u ofs_in_seg: %u is invalid!", ie->inum, file_blk_nr, segno, ofs_in_seg);
+					}
 					list_del(&entry->list);
 	                		kmem_cache_free(f2fs_offset_entry_slab, entry);
 					continue;
 				}
 
+				if (!is_alive(sbi, sum, &dni, start_addr + ofs_in_seg, &nofs)) {
+					if (iocount == 0) {
+						printk(KERN_ERR "\n Inode nr: %u, file blk: %u segno: %u ofs_in_seg: %u is dead!", ie->inum, file_blk_nr, segno, ofs_in_seg);
+						printk(KERN_ERR "\n valid blks in this segment: %u ", get_seg_entry(sbi, segno)->valid_blocks);
+						//print_segment_details(sbi, segno);
+
+					}
+					list_del(&entry->list);
+	                		kmem_cache_free(f2fs_offset_entry_slab, entry);
+					continue;
+					/*
+					delete_entries(ie);
+					break;
+					*/
+				}
+
 				if (S_ISREG(inode->i_mode)) {
-					if (!down_write_trylock(&fi->i_gc_rwsem[READ]))
+					if (iocount == 0) {
+						printk(KERN_ERR "\n iocount: %d, trying to lock! \n");
+					}
+					if (!down_write_trylock(&fi->i_gc_rwsem[READ])) {
+						printk(KERN_ERR "\n Cannot get READ lock, inum: %d", ie->inum);
 						break;
+					}
 					if (!down_write_trylock(
 							&fi->i_gc_rwsem[WRITE])) {
 						sbi->skipped_gc_rwsem++;
 						up_write(&fi->i_gc_rwsem[READ]);
+						printk(KERN_ERR "\n Cannot get WRITE lock, inum: %d", ie->inum);
 						break;
 					}
 					locked = true;
-					//printk(KERN_ERR "\n Inode is locked!");
+					//printk(KERN_ERR "\n Inode: %u is locked!", ie->inum);
 
 					/* wait for all inflight aio data */
 					inode_dio_wait(inode);
@@ -1196,11 +1288,11 @@ redo:
 			else 
 				err = move_data_page(inode, file_blk_nr, gc_type,
 								segno, ofs_in_seg);
-			stat_inc_data_blk_count(sbi, 1, gc_type);
 			if (!err) {
+				stat_inc_data_blk_count(sbi, 1, gc_type);
 				iocount++;
 				if (iocount == NRWRITES) {
-					printk(KERN_ERR "\n %d writes submitted! ", NRWRITES);
+					printk(KERN_ERR "\n 1) %d writes submitted! ", NRWRITES);
 					iocount = 0;
 					if (locked) {
 						up_write(&fi->i_gc_rwsem[WRITE]);
@@ -1232,7 +1324,7 @@ redo:
 			printk(KERN_ERR "\n 2. calling f2fs_submit_merged_writes()");
 			f2fs_submit_merged_write(sbi, DATA);
 		}
-		printk(KERN_ERR "\n %d writes submitted! ", iocount);
+		printk(KERN_ERR "\n 2) %d writes submitted! ", iocount);
 	}
 	phase = phase + 1;
 	/* If for some reason all the blocks are not cleaned, then we repeat for that case */
@@ -1392,8 +1484,11 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 	unsigned char type;
 	int submitted = 0, ret = 0;
 	struct gc_seg_list *cur_seg, *next_seg;
+	struct dirty_seglist_info *dirty_i = DIRTY_I(sbi);
+	int valid_blks = 0;
+	int secno = 0;
 
-	//gc_type = FG_GC;
+	gc_type = FG_GC;
 
 	list_for_each_entry_safe(cur_seg, next_seg, &seglist->list, list) {
 		segno = cur_seg->segno;
@@ -1504,6 +1599,26 @@ static int do_garbage_collect(struct f2fs_sb_info *sbi,
 
 		printk("\n data_seg_sel is true. Now will try to actually clean!");
 		submitted = gc_move_inodes_pages(sbi, gc_list, gc_type);
+		if (gc_type == FG_GC) {
+			/* If you do this for BG_GC, the same segments will get called
+			 * over and over again! as the blocks will be freed at sync
+			 * time and it this point, all the dirty marked segments will
+			 * have valid blks.
+			 */
+			list_for_each_entry_safe(cur_seg, next_seg, &seglist->list, list) {
+				segno = cur_seg->segno;
+				valid_blks = get_seg_entry(sbi, segno)->valid_blocks;
+				secno = GET_SEC_FROM_SEG(sbi, segno);
+				printk(KERN_ERR "\n valid blks in this segment: %u ", valid_blks);
+				if (valid_blks) {
+					if (sbi->cur_victim_sec == secno)
+						sbi->cur_victim_sec = 0;
+
+					printk(KERN_ERR "\n Adding seg: %d, secno: %d back in the dirty pool!", segno, secno);
+					clear_bit(secno, dirty_i->victim_secmap);
+				}
+			}
+		}
 	}
 	if (type == NODE) {
 		if (submitted)

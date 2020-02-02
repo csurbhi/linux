@@ -191,6 +191,7 @@ static void f2fs_write_end_io(struct bio *bio)
 			mapping_set_error(page->mapping, -EIO);
 			if (type == F2FS_WB_CP_DATA)
 				f2fs_stop_checkpoint(sbi, true);
+			printk(KERN_ERR "\n !!! Blknr: %lld bio error: %d",SECTOR_TO_BLOCK(bio->bi_iter.bi_sector), bio->bi_status);
 		}
 
 		f2fs_bug_on(sbi, page->mapping == NODE_MAPPING(sbi) &&

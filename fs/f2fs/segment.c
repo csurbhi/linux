@@ -794,7 +794,7 @@ static void __locate_dirty_segment(struct f2fs_sb_info *sbi, unsigned int segno,
 			return;
 		}
 		if (!test_and_set_bit(segno, dirty_i->dirty_segmap[t])) {
-			printk(KERN_ERR "\n Marking segno: %d DIRTY! ", segno);
+			// printk(KERN_ERR "\n Marking segno: %d DIRTY! ", segno);
 			dirty_i->nr_dirty[t]++;
 		}
 	}
