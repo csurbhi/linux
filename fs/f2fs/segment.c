@@ -793,8 +793,10 @@ static void __locate_dirty_segment(struct f2fs_sb_info *sbi, unsigned int segno,
 			f2fs_bug_on(sbi, 1);
 			return;
 		}
-		if (!test_and_set_bit(segno, dirty_i->dirty_segmap[t]))
+		if (!test_and_set_bit(segno, dirty_i->dirty_segmap[t])) {
+			printk(KERN_ERR "\n Marking segno: %d DIRTY! ", segno);
 			dirty_i->nr_dirty[t]++;
+		}
 	}
 }
 
@@ -2494,6 +2496,7 @@ static void new_curseg(struct f2fs_sb_info *sbi, int type, bool new_sec)
 	segno = __get_next_segno(sbi, type);
 	get_new_segment(sbi, &segno, new_sec, dir);
 	curseg->next_segno = segno;
+	atomic64_inc(&sbi->switch_segs);
 	reset_curseg(sbi, type, 1);
 	curseg->alloc_type = LFS;
 }
@@ -3109,9 +3112,26 @@ static void do_write_page(struct f2fs_summary *sum, struct f2fs_io_info *fio)
 {
 	int type = __get_segment_type(fio);
 	bool keep_order = (test_opt(fio->sbi, LFS) && type == CURSEG_COLD_DATA);
+	long long gc_writes_now = 0;
+	long long app_writes_now = 0;
+
 
 	if (keep_order)
 		down_read(&fio->sbi->io_order_lock);
+
+	gc_writes_now = atomic64_read(&fio->sbi->gc_writes);
+	app_writes_now = atomic64_read(&fio->sbi->app_writes);
+	if((gc_writes_now == LLONG_MAX-1) || (app_writes_now == LLONG_MAX-1)) {
+		printk(KERN_NOTICE "\n application writes: %ll, GC writes: %ll", app_writes_now, gc_writes_now);
+		atomic64_set(&fio->sbi->gc_writes, 0);
+		atomic64_set(&fio->sbi->app_writes, 0);
+	}
+	if (is_gc_page(fio->page)) {
+		clear_gc_page(fio->page);
+		atomic64_inc(&fio->sbi->gc_writes);
+	} else {
+		atomic64_inc(&fio->sbi->app_writes);
+	}
 reallocate:
 	f2fs_allocate_data_block(fio->sbi, fio->page, fio->old_blkaddr,
 			&fio->new_blkaddr, sum, type, fio, true);

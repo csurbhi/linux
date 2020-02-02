@@ -1617,7 +1617,7 @@ int f2fs_move_node_page(struct page *node_page, int gc_type)
 		f2fs_wait_on_page_writeback(node_page, NODE, true, true);
 
 		set_page_dirty(node_page);
-
+		set_gc_page(node_page);
 		if (!clear_page_dirty_for_io(node_page)) {
 			err = -EAGAIN;
 			goto out_page;
@@ -1631,8 +1631,10 @@ int f2fs_move_node_page(struct page *node_page, int gc_type)
 		goto release_page;
 	} else {
 		/* set page dirty and write it */
-		if (!PageWriteback(node_page))
+		if (!PageWriteback(node_page)) {
 			set_page_dirty(node_page);
+			set_gc_page(node_page);
+		}
 	}
 out_page:
 	unlock_page(node_page);

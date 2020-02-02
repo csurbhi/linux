@@ -400,6 +400,30 @@ static inline void clear_cold_data(struct page *page)
 	ClearPageChecked(page);
 }
 
+static inline void set_gc_page(struct page *page)
+{
+       if (!PagePrivate2(page)) {
+               SetPagePrivate2(page);
+               get_page(page);
+       }
+}
+
+static inline void clear_gc_page(struct page *page)
+{
+       if (PagePrivate2(page)) {
+               ClearPagePrivate2(page);
+               f2fs_put_page(page, 0);
+       }
+}
+
+static inline int is_gc_page(struct page *page)
+{
+       if(PagePrivate2(page))
+               return 1;
+       else
+               return 0;
+}
+
 static inline int is_node(struct page *page, int type)
 {
 	struct f2fs_node *rn = F2FS_NODE(page);
