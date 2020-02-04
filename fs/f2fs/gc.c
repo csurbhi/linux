@@ -21,7 +21,7 @@
 #include "gc.h"
 #include <trace/events/f2fs.h>
 
-#define TOTAL_SECS_CLEAN 1
+#define TOTAL_SECS_CLEAN 8
 #define NRWRITES (65536 * TOTAL_SECS_CLEAN) /* one section */
 
 struct kmem_cache * gc_seg_node_cache;
