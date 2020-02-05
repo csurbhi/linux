@@ -12,7 +12,9 @@ cd /github/f2fs-tools/mkfs
 sudo mount /mnt
 cd /github/filebench-1.5-alpha3
 sudo ./fix
-sudo ./benchmarks/cleantogether_measure.sh
-
+#sudo ./benchmarks/cleantogether_measure.sh
+sudo ./benchmarks/writeamplification.sh
+# Keep the filesystem mounted for GC and benchmark to complete.
+# Dont forget to calculate the layout score
 
 
