@@ -730,8 +730,10 @@ static int dd_init_sched(struct request_queue *q, struct elevator_type *e)
 
 		INIT_LIST_HEAD(&per_prio->dispatch);
 		INIT_LIST_HEAD(&per_prio->fifo_list[DD_READ]);
+		INIT_LIST_HEAD(&per_prio->fifo_list[DD_GC_READ]);
 		INIT_LIST_HEAD(&per_prio->fifo_list[DD_WRITE]);
 		per_prio->sort_list[DD_READ] = RB_ROOT;
+		per_prio->sort_list[DD_GC_READ] = RB_ROOT;
 		per_prio->sort_list[DD_WRITE] = RB_ROOT;
 	}
 	dd->fifo_expire[DD_READ] = read_expire;
