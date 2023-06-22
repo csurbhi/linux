@@ -28,6 +28,7 @@
  * See Documentation/block/deadline-iosched.rst
  */
 static const int read_expire = HZ / 2;  /* max time before a read is submitted. */
+static const int gc_read_expire = HZ;   /* max time before a GC read is submitted */
 static const int write_expire = 5 * HZ; /* ditto for writes, these limits are SOFT! */
 /*
  * Time after which to dispatch lower priority requests even if higher
@@ -35,15 +36,17 @@ static const int write_expire = 5 * HZ; /* ditto for writes, these limits are SO
  */
 static const int prio_aging_expire = 10 * HZ;
 static const int writes_starved = 2;    /* max times reads can starve a write */
+static const int gc_reads_starved = 2; /* max times reads can starve gc_reads */
 static const int fifo_batch = 16;       /* # of sequential requests treated as one
 				     by the above parameters. For throughput. */
 
 enum dd_data_dir {
 	DD_READ		= READ,
 	DD_WRITE	= WRITE,
+	DD_GC_READ	= GC_READ,
 };
 
-enum { DD_DIR_COUNT = 2 };
+enum { DD_DIR_COUNT = 3 };
 
 enum dd_prio {
 	DD_RT_PRIO	= 0,
@@ -337,7 +340,7 @@ deadline_fifo_request(struct deadline_data *dd, struct dd_per_prio *per_prio,
 		return NULL;
 
 	rq = rq_entry_fifo(per_prio->fifo_list[data_dir].next);
-	if (data_dir == DD_READ || !blk_queue_is_zoned(rq->q))
+	if (data_dir == DD_READ || data_dir == DD_GC_READ || !blk_queue_is_zoned(rq->q))
 		return rq;
 
 	/*
@@ -376,7 +379,7 @@ deadline_next_request(struct deadline_data *dd, struct dd_per_prio *per_prio,
 	if (!rq)
 		return NULL;
 
-	if (data_dir == DD_READ || !blk_queue_is_zoned(rq->q))
+	if (data_dir == DD_READ || data_dir == DD_GC_READ || !blk_queue_is_zoned(rq->q))
 		return rq;
 
 	/*
@@ -417,6 +420,7 @@ static bool started_after(struct deadline_data *dd, struct request *rq,
 /*
  * deadline_dispatch_requests selects the best request according to
  * read/write expire, fifo_batch, etc and with a start time <= @latest_start.
+ * requests started before a given last start time.
  */
 static struct request *__dd_dispatch_request(struct deadline_data *dd,
 					     struct dd_per_prio *per_prio,
@@ -429,7 +433,14 @@ static struct request *__dd_dispatch_request(struct deadline_data *dd,
 
 	lockdep_assert_held(&dd->lock);
 
+	/* These could be requests that are directly sent to the dispatch queue and
+	 * escape the rb tree and the fifo queue
+	 */
 	if (!list_empty(&per_prio->dispatch)) {
+		/* If there are requests in the dispatch queue that started after
+		 * latest_start then we dont need to add any more requests to the
+		 * dispatch queue as they wont be considered
+		 */
 		rq = list_first_entry(&per_prio->dispatch, struct request,
 				      queuelist);
 		if (started_after(dd, rq, latest_start))
@@ -442,9 +453,12 @@ static struct request *__dd_dispatch_request(struct deadline_data *dd,
 	 * batches are currently reads XOR writes
 	 */
 	rq = deadline_next_request(dd, per_prio, dd->last_dir);
-	if (rq && dd->batching < dd->fifo_batch)
-		/* we have a next request are still entitled to batch */
-		goto dispatch_request;
+	/* Batch upto fifo_batch (16) number of requests */
+	if (rq && dd->batching < dd->fifo_batch) {
+		if (!started_after(dd, rq, latest_start))
+			/* we have a next request are still entitled to batch */
+			goto dispatch_request;
+	}
 
 	/*
 	 * at this point we are not running a batch. select the appropriate
@@ -454,30 +468,67 @@ static struct request *__dd_dispatch_request(struct deadline_data *dd,
 	if (!list_empty(&per_prio->fifo_list[DD_READ])) {
 		BUG_ON(RB_EMPTY_ROOT(&per_prio->sort_list[DD_READ]));
 
-		if (deadline_fifo_request(dd, per_prio, DD_WRITE) &&
-		    (dd->starved++ >= dd->writes_starved))
-			goto dispatch_writes;
 
+		if (!deadline_check_fifo(per_prio, DD_READ)) {
+
+			if (deadline_fifo_request(dd, per_prio, DD_GC_READ)) {
+				if (deadline_check_fifo(per_prio, DD_GC_READ))
+					goto dispatch_gc_reads;
+
+				if (dd->starved_gc_reads++ >= dd->gc_reads_starved)
+					goto dispatch_gc_reads;
+			}
+			/* Else: No GC reads are starved, so we check if writes are starved */
+
+			if (deadline_fifo_request(dd, per_prio, DD_WRITE)) {
+				if (deadline_check_fifo(per_prio, DD_WRITE))
+					goto dispatch_writes;
+			    	if (dd->starved_writes++ >= dd->writes_starved) {
+					goto dispatch_writes;
+				}
+			}
+		}
 		data_dir = DD_READ;
-
 		goto dispatch_find_request;
 	}
 
 	/*
-	 * there are either no reads or writes have been starved
+	 * there are either no reads or GC reads have been starved or expired
 	 */
+	if (!list_empty(&per_prio->fifo_list[DD_GC_READ])) {
+dispatch_gc_reads:
+		BUG_ON(RB_EMPTY_ROOT(&per_prio->sort_list[DD_GC_READ]));
 
-	if (!list_empty(&per_prio->fifo_list[DD_WRITE])) {
-dispatch_writes:
-		BUG_ON(RB_EMPTY_ROOT(&per_prio->sort_list[DD_WRITE]));
+		if (!deadline_check_fifo(per_prio, DD_GC_READ) && (dd->starved_gc_reads < dd->gc_reads_starved)) {
 
-		dd->starved = 0;
+			/* if a write request has expired, we need to attend to it, despite it not being starved!
+			 */
+			if (deadline_fifo_request(dd, per_prio, DD_WRITE)) {
+				if (deadline_check_fifo(per_prio, DD_WRITE))
+					goto dispatch_writes;
+			    	if (dd->starved_writes++ >= dd->writes_starved) {
+					goto dispatch_writes;
+				}
+			}
 
-		data_dir = DD_WRITE;
-
+		}
+		dd->starved_gc_reads = 0;
+		data_dir = DD_GC_READ;
 		goto dispatch_find_request;
 	}
 
+	/*
+	 * there are either no reads, GC reads or writes have been starved
+	 */
+	if (!list_empty(&per_prio->fifo_list[DD_WRITE])) {
+dispatch_writes:
+		BUG_ON(RB_EMPTY_ROOT(&per_prio->sort_list[DD_WRITE]));
+		dd->starved_writes  = 0;
+		data_dir = DD_WRITE;
+		goto dispatch_find_request;
+	}
+
+	/* All lists are empty, so we return NULL */
 	return NULL;
 
 dispatch_find_request:
@@ -486,16 +537,11 @@ dispatch_find_request:
 	 */
 	next_rq = deadline_next_request(dd, per_prio, data_dir);
 	if (deadline_check_fifo(per_prio, data_dir) || !next_rq) {
-		/*
-		 * A deadline has expired, the last request was in the other
-		 * direction, or we have run out of higher-sectored requests.
-		 * Start again from the request with the earliest expiry time.
-		 */
+		/* If any request has expired, we process that first */
 		rq = deadline_fifo_request(dd, per_prio, data_dir);
 	} else {
-		/*
-		 * The last req was the same dir and we have a next request in
-		 * sort order. No expired requests so continue on from here.
+		/* If no request has expired, then we choose the request that
+		 * is closest to the previous request (ie sorted geometrically)
 		 */
 		rq = next_rq;
 	}
@@ -689,7 +735,9 @@ static int dd_init_sched(struct request_queue *q, struct elevator_type *e)
 		per_prio->sort_list[DD_WRITE] = RB_ROOT;
 	}
 	dd->fifo_expire[DD_READ] = read_expire;
+	dd->fifo_expire[GC_READ] = gc_read_expire;
 	dd->fifo_expire[DD_WRITE] = write_expire;
+	dd->gc_reads_starved = gc_read_starved;
 	dd->writes_starved = writes_starved;
 	dd->front_merges = 1;
 	dd->last_dir = DD_WRITE;
@@ -792,6 +840,10 @@ static void dd_insert_request(struct blk_mq_hw_ctx *hctx, struct request *rq,
 		rq->elv.priv[0] = (void *)(uintptr_t)1;
 	}
 
+	/* If the request can be merged, then merge it. You do not need to insert a
+	 * new request to the dispatch queue in that case
+	 */
+
 	if (blk_mq_sched_try_insert_merge(q, rq, &free)) {
 		blk_mq_free_requests(&free);
 		return;
@@ -806,6 +858,7 @@ static void dd_insert_request(struct blk_mq_hw_ctx *hctx, struct request *rq,
 		deadline_add_rq_rb(per_prio, rq);
 
 		if (rq_mergeable(rq)) {
+		/* Request is mergable but could not be merged */
 			elv_rqhash_add(q, rq);
 			if (!q->last_merge)
 				q->last_merge = rq;
@@ -908,7 +961,8 @@ static bool dd_has_work_for_prio(struct dd_per_prio *per_prio)
 {
 	return !list_empty_careful(&per_prio->dispatch) ||
 		!list_empty_careful(&per_prio->fifo_list[DD_READ]) ||
-		!list_empty_careful(&per_prio->fifo_list[DD_WRITE]);
+		!list_empty_careful(&per_prio->fifo_list[DD_WRITE]) ||
+		!list_empty_careful(&per_prio->fifo_list[DD_GC_READ]);
 }
 
 static bool dd_has_work(struct blk_mq_hw_ctx *hctx)
